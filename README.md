@@ -2,6 +2,7 @@
 
 ### MBA Data Science Management Project | Quantitative Finance
 **Author:** R Sashi Adhithya
+
 **Institution:** IIT Mandi
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B) ![Finance](https://img.shields.io/badge/Domain-Quant%20Finance-green)
