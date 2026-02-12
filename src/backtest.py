@@ -453,3 +453,126 @@ def _build_run_metadata(weights, freq, cost, tilt, n_over, n_under):
         'run_params': params,
         'config_hash': hashlib.md5(s.encode()).hexdigest()[:8]
     }
+
+# ─── Bootstrap Significance Testing ─────────────────────────────
+
+def bootstrap_test(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    n_samples: int = 1000,
+    block_size: int = 21,
+    seed: Optional[int] = 42,
+) -> Dict[str, Tuple[float, float, float]]:
+    """
+    Bootstrap test for significance of alpha. (Vectorized)
+    Uses block bootstrap (21-day blocks) with NumPy broadcasting.
+
+    Returns dict with: (mean, 5th percentile, 95th percentile) for each metric.
+    """
+    active_returns = portfolio_returns - benchmark_returns
+    n = len(active_returns)
+
+    if n < block_size * 2:
+        return {}
+    if n <= block_size:
+        return {}
+
+    rng = np.random.default_rng(seed)
+
+    # 1. Generate start indices for all blocks across all samples at once
+    # n_blocks needed per sample
+    n_blocks = n // block_size + 1
+    
+    # Random start points: (n_samples, n_blocks)
+    starts = rng.integers(0, n - block_size, size=(n_samples, n_blocks))
+
+    # 2. Create offsets mask: (block_size,)
+    offsets = np.arange(block_size)
+
+    # 3. Broadcast to create (n_samples, n_blocks, block_size) indices
+    # starts[..., None] -> (S, B, 1)
+    # offsets[None, None, :] -> (1, 1, K)
+    # indices -> (S, B, K)
+    indices = starts[..., None] + offsets[None, None, :]
+
+    # 4. Flatten the last two dims to get a stream of indices: (S, N_generated)
+    indices = indices.reshape(n_samples, -1)
+
+    # 5. Truncate to exact length n
+    indices = indices[:, :n]
+
+    # 6. Fancy indexing to fetch return values
+    # active_rets_arr: (N,)
+    active_rets_arr = active_returns.values
+    port_rets_arr = portfolio_returns.values
+
+    # sample_active: (S, N)
+    sample_active = active_rets_arr[indices]
+    sample_port = port_rets_arr[indices]
+
+    # 7. Compute metrics across axis 1 (samples)
+    
+    # Alpha: Mean of active returns * 252
+    alpha_samples = sample_active.mean(axis=1) * TRADING_DAYS_PER_YEAR
+
+    # Sharpe: Mean / Std * sqrt(252)
+    port_means = sample_port.mean(axis=1)
+    port_stds = sample_port.std(axis=1)
+    # Avoid div by zero
+    port_stds[port_stds < 1e-10] = 1.0 # Will result in 0 sharpe if mean is 0, or just handle mask
+    
+    sharpe_samples = (port_means / port_stds) * np.sqrt(TRADING_DAYS_PER_YEAR)
+    sharpe_samples[port_stds < 1e-9] = 0.0
+
+    return {
+        'alpha': (
+            round(float(np.mean(alpha_samples) * 100), 2),
+            round(float(np.percentile(alpha_samples, 5) * 100), 2),
+            round(float(np.percentile(alpha_samples, 95) * 100), 2),
+        ),
+        'sharpe': (
+            round(float(np.mean(sharpe_samples) * 100), 2),
+            round(float(np.percentile(sharpe_samples, 5) * 100), 2),
+            round(float(np.percentile(sharpe_samples, 95) * 100), 2),
+        ),
+    }
+
+
+def sensitivity_analysis(
+    etf_prices: pd.DataFrame,
+    param_grid: Optional[Dict] = None,
+) -> pd.DataFrame:
+    """
+    Run backtest across multiple parameter combinations.
+    Returns a DataFrame with each config and resulting metrics.
+    """
+    if param_grid is None:
+        param_grid = {
+            'preset': list(WEIGHT_PRESETS.keys()),
+            'rebalance_freq': ['Monthly', 'Quarterly'],
+        }
+
+    rows = []
+    # Use standard loops as we are iterating high-level configs
+    presets = param_grid.get('preset', ['Momentum-Heavy'])
+    freqs = param_grid.get('rebalance_freq', ['Monthly'])
+    
+    for preset in presets:
+        for freq in freqs:
+            preset_weights = WEIGHT_PRESETS.get(preset)
+            if preset_weights is None:
+                logger.warning(f"Unknown preset '{preset}', skipping.")
+                continue
+
+            result = run_backtest(
+                etf_prices,
+                weights=preset_weights,
+                rebalance_freq=freq,
+                transaction_cost_bps=DEFAULT_TRANSACTION_COST,
+            )
+            if result.metrics:
+                row = {'preset': preset, 'rebalance_freq': freq}
+                row.update(result.metrics)
+                rows.append(row)
+
+    return pd.DataFrame(rows)
