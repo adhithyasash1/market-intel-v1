@@ -1,0 +1,26 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    - name: Install Security Tools
+      run: pip install bandit safety
+    - name: Bandit Scan (Static Analysis)
+      # -r: recursive, -ll: medium severity, -ii: medium confidence
+      run: bandit -r src/ -ll -ii
+    - name: Safety Check (Dependencies)
+      # Scans requirements for known vulnerabilities
+      run: |
+        pip install -r requirements.txt
+        safety check

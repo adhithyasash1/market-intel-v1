@@ -31,18 +31,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
+# Create non-root user
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/bash -m appuser
 
-# Copy application code
+# Copy installed packages from builder
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Update PATH for appuser
+ENV PATH="/home/appuser/.local/bin:$PATH"
+
+# Copy application code and chown
 COPY . .
+RUN chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER 10001
 
 # Default port for Streamlit
 EXPOSE 8501
 
 # Healthcheck for Streamlit
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+    CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
 # Default entrypoint (App)
 # For worker, override CMD with ["python", "-m", "src.run_backtest_cli"]

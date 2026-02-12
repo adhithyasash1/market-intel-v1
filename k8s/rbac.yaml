@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: market-sa
+  namespace: default
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: market-role
+  namespace: default
+rules: [] # No permissions required for app logic
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: market-rolebinding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: market-sa
+  namespace: default
+roleRef:
+  kind: Role
+  name: market-role
+  apiGroup: rbac.authorization.k8s.io

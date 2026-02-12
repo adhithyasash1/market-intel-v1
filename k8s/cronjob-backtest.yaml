@@ -9,6 +9,12 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: market-sa
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            runAsNonRoot: true
           containers:
           - name: worker
             image: ghcr.io/adhithyasash1/testing:main

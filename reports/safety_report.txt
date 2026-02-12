@@ -1,0 +1,115 @@
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+
+[31m[1mDEPRECATED: [0m[33m[1mthis command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.[0m
+
+
+[32mWe highly encourage switching to the new [0m[32m[1m`scan`[0m[32m command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.[0m
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+
++==============================================================================+
+
+                               /$$$$$$            /$$
+                              /$$__  $$          | $$
+           /$$$$$$$  /$$$$$$ | $$  \__//$$$$$$  /$$$$$$   /$$   /$$
+          /$$_____/ |____  $$| $$$$   /$$__  $$|_  $$_/  | $$  | $$
+         |  $$$$$$   /$$$$$$$| $$_/  | $$$$$$$$  | $$    | $$  | $$
+          \____  $$ /$$__  $$| $$    | $$_____/  | $$ /$$| $$  | $$
+          /$$$$$$$/|  $$$$$$$| $$    |  $$$$$$$  |  $$$$/|  $$$$$$$
+         |_______/  \_______/|__/     \_______/   \___/   \____  $$
+                                                          /$$  | $$
+                                                         |  $$$$$$/
+  by safetycli.com                                        \______/
+
++==============================================================================+
+
+ [1mANNOUNCEMENTS[0m 
+
+[33m  * Warning: tvscreener, yfinance, pandas, numpy, scipy, pyarrow, plotly,[0m 
+[33m    streamlit and pytest are unpinned. Safety by default does not report on[0m 
+[33m    potential vulnerabilities in unpinned packages. It is recommended to pin[0m 
+[33m    your dependencies unless this is a library meant for distribution. To learn[0m 
+[33m    more about reporting these, specifier range handling, and options for[0m 
+[33m    scanning unpinned packages visit https://docs.pyup.io/docs/safety-range-[0m 
+[33m    specs[0m 
+
++==============================================================================+
+
+ [1mREPORT[0m 
+
+  Safety [1mv3.7.0[0m is scanning for [1mVulnerabilities[0m[1m...[0m
+[1m  Scanning dependencies[0m in your [1mfiles:[0m
+
+  -> requirements.txt
+
+  Using [1mopen-source vulnerability database[0m
+[1m  Found and scanned 9 packages[0m
+  Timestamp [1m2026-02-13 01:11:57[0m
+[1m  0[0m[1m vulnerabilities reported[0m
+[1m  3[0m[1m vulnerabilities ignored[0m
+
++==============================================================================+
+ [1mVULNERABILITIES REPORTED[0m 
++==============================================================================+
+
+-> Vulnerability may be present given that your streamlit install specifier is
+   >=1.28.0
+[1m   Vulnerability ID: [0m50437
+[32m[1m   This vulnerability is being ignored.[0m
+[1m   Reason: [0mThis vulnerability is being ignored due to the 'ignore-
+   unpinned-requirements' flag (default True). To change this, set 'ignore-
+   unpinned-requirements' to False under 'security' in your policy file. See
+   https://docs.pyup.io/docs/safety-20-policy-file for more information.
+[1m   For more information about this vulnerability, visit
+   [0mhttps://data.safetycli.com/v/50437/97c[0m
+
+
+-> Vulnerability may be present given that your streamlit install specifier is
+   >=1.28.0
+[1m   Vulnerability ID: [0m78762
+[32m[1m   This vulnerability is being ignored.[0m
+[1m   Reason: [0mThis vulnerability is being ignored due to the 'ignore-
+   unpinned-requirements' flag (default True). To change this, set 'ignore-
+   unpinned-requirements' to False under 'security' in your policy file. See
+   https://docs.pyup.io/docs/safety-20-policy-file for more information.
+[1m   For more information about this vulnerability, visit
+   [0mhttps://data.safetycli.com/v/78762/97c[0m
+
+
+-> Vulnerability may be present given that your pyarrow install specifier is
+   >=12.0.0
+[1m   Vulnerability ID: [0m65501
+[32m[1m   This vulnerability is being ignored.[0m
+[1m   Reason: [0mThis vulnerability is being ignored due to the 'ignore-
+   unpinned-requirements' flag (default True). To change this, set 'ignore-
+   unpinned-requirements' to False under 'security' in your policy file. See
+   https://docs.pyup.io/docs/safety-20-policy-file for more information.
+[1m   For more information about this vulnerability, visit
+   [0mhttps://data.safetycli.com/v/65501/97c[0m
+
+
++==============================================================================+
+
+ Scan was completed. 0 vulnerabilities were reported. 3 vulnerabilities from 2 
+ packages were ignored. 
+
++==============================================================================+[0m
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+
+[31m[1mDEPRECATED: [0m[33m[1mthis command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.[0m
+
+
+[32mWe highly encourage switching to the new [0m[32m[1m`scan`[0m[32m command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.[0m
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+

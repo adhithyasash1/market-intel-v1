@@ -17,6 +17,12 @@ spec:
         app: market-dashboard
         component: app
     spec:
+      serviceAccountName: market-sa
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        runAsNonRoot: true
       containers:
       - name: app
         image: ghcr.io/adhithyasash1/testing:main

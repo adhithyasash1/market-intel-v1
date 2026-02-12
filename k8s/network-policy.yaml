@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-market-dashboard-egress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: market-dashboard
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS resolution
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow HTTPS (TradingView, Yahoo Finance, S3, Sentry)
+  - ports:
+    - protocol: TCP
+      port: 443
