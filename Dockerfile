@@ -2,7 +2,7 @@
 # Target: App (Streamlit) or Worker (Backtest) based on entrypoint
 
 # ─── Stage 1: Builder ───
-FROM python:3.10-slim as builder
+FROM python:3.14-slim as builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ COPY requirements.txt .
 RUN pip install --user -r requirements.txt
 
 # ─── Stage 2: Runtime ───
-FROM python:3.10-slim as runtime
+FROM python:3.14-slim as runtime
 
 WORKDIR /app
 
