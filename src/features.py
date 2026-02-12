@@ -10,6 +10,7 @@ import numpy as np
 from typing import Optional
 
 from config import MIN_SECTOR_STOCKS
+from src.utils import sigmoid_gate
 
 
 def _safe_column_diff(df: pd.DataFrame, col_a: str, col_b: str) -> pd.Series:
@@ -37,10 +38,9 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
     # ── Momentum acceleration: short-term vs medium-term momentum ──
     # Soft sigmoid gate prevents discontinuity where a tiny momentum change
     # flips acceleration from 0 to full value (hard gate instability).
-    # sigmoid(-50 * x) ≈ 0 when x < -0.05, ≈ 1 when x > 0.05
     raw_accel = _safe_column_diff(out, 'perf_1m', 'perf_3m')
     if 'perf_1m' in out.columns:
-        gate = 1.0 / (1.0 + np.exp(-50 * out['perf_1m']))
+        gate = sigmoid_gate(out['perf_1m'])
         out['momentum_accel'] = raw_accel * gate
     else:
         out['momentum_accel'] = 0.0
@@ -139,7 +139,7 @@ def compute_sector_aggregates(stock_df: pd.DataFrame) -> pd.DataFrame:
         agg['avg_volatility'] = grouped['volatility_d'].median()
     elif 'atr_14' in df.columns and 'price' in df.columns:
         # ATR is in price units; normalize to % to match volatility_d scale
-        df = df.copy()
+        # Safe: df is already a copy from dropna() above
         df['_atr_pct'] = df['atr_14'] / df['price'] * 100
         agg['avg_volatility'] = df.groupby('sector')['_atr_pct'].median()
     else:

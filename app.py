@@ -257,12 +257,13 @@ with st.sidebar:
     if use_custom:
         st.markdown("**Adjust Weights** (must sum to 1.0)")
         preset_w = WEIGHT_PRESETS[preset_name]
-        w_mom = st.slider("Momentum",     0.0, 1.0, preset_w["momentum"],     0.05)
-        w_brd = st.slider("Breadth",      0.0, 1.0, preset_w["breadth"],      0.05)
-        w_vol = st.slider("Volatility",   0.0, 1.0, preset_w["volatility"],   0.05)
-        w_liq = st.slider("Liquidity",    0.0, 1.0, preset_w["liquidity"],    0.05)
-        w_acc = st.slider("Acceleration", 0.0, 1.0, preset_w["acceleration"], 0.05)
-        total = w_mom + w_brd + w_vol + w_liq + w_acc
+        w_mom = st.slider("Momentum",      0.0, 1.0, preset_w["momentum"],      0.05)
+        w_brd = st.slider("Breadth",       0.0, 1.0, preset_w["breadth"],       0.05)
+        w_vol = st.slider("Volatility",    0.0, 1.0, preset_w["volatility"],    0.05)
+        w_liq = st.slider("Liquidity",     0.0, 1.0, preset_w["liquidity"],     0.05)
+        w_acc = st.slider("Acceleration",  0.0, 1.0, preset_w["acceleration"],  0.05)
+        w_con = st.slider("Concentration", 0.0, 1.0, preset_w.get("concentration", 0.05), 0.05)
+        total = w_mom + w_brd + w_vol + w_liq + w_acc + w_con
         if total < 1e-6:
             st.error("Weights cannot all be zero.")
             total = 1.0  # prevent division by zero
@@ -271,7 +272,7 @@ with st.sidebar:
         custom_weights = {
             "momentum": w_mom / total, "breadth": w_brd / total,
             "volatility": w_vol / total, "liquidity": w_liq / total,
-            "acceleration": w_acc / total,
+            "acceleration": w_acc / total, "concentration": w_con / total,
         }
     else:
         custom_weights = None

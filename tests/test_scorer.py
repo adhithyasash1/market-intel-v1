@@ -8,6 +8,7 @@ import pytest
 from src.scorer import (
     compute_zscores, compute_weighted_score, compute_composite_scores,
     assign_signals, explain_signal, score_pipeline, FEATURE_MAP,
+    contribution_breakdown,
 )
 from config import WEIGHT_PRESETS, DEFAULT_PRESET
 
@@ -120,7 +121,10 @@ class TestExplainSignal:
         explanations = explain_signal(row)
         assert isinstance(explanations, list)
         assert all(isinstance(e, str) for e in explanations)
-        assert len(explanations) <= 3
+        # 6 factors + 1 verification line = 7 entries
+        assert len(explanations) == len(FEATURE_MAP) + 1
+        # Last line must be the verification/composite line
+        assert explanations[-1].startswith('── Composite:')
 
     def test_custom_weights_affect_explanations(self, sample_sector_aggs):
         """Different weights should produce different contribution rankings."""
@@ -149,9 +153,56 @@ class TestScorePipeline:
         result = score_pipeline(sample_sector_aggs)
         for sector, row in result.iterrows():
             assert isinstance(row['explanation'], list)
-            assert len(row['explanation']) <= 3
+            # 6 factors + 1 verification line
+            assert len(row['explanation']) == len(FEATURE_MAP) + 1
 
     def test_scores_sorted_descending(self, sample_sector_aggs):
         result = score_pipeline(sample_sector_aggs)
         scores = result['composite_score'].values
         assert all(scores[i] >= scores[i+1] for i in range(len(scores)-1))
+
+
+class TestContributionBreakdown:
+    """§3 — structured contribution decomposition for auditability."""
+
+    def test_returns_all_factors(self, sample_sector_aggs):
+        scored = compute_composite_scores(sample_sector_aggs)
+        row = scored.iloc[0]
+        breakdown = contribution_breakdown(row)
+        assert len(breakdown) == len(FEATURE_MAP)
+
+    def test_entries_have_required_keys(self, sample_sector_aggs):
+        scored = compute_composite_scores(sample_sector_aggs)
+        row = scored.iloc[0]
+        breakdown = contribution_breakdown(row)
+        required = {'factor', 'label', 'raw_value', 'z_score', 'weight',
+                    'contribution', 'pct_of_score'}
+        for entry in breakdown:
+            assert required.issubset(entry.keys()), f"Missing keys in {entry}"
+
+    def test_contributions_sum_to_composite(self, sample_sector_aggs):
+        """Σ(w×z) from breakdown must equal composite_score."""
+        scored = compute_composite_scores(sample_sector_aggs)
+        for sector in scored.index:
+            row = scored.loc[sector]
+            breakdown = contribution_breakdown(row)
+            total = sum(e['contribution'] for e in breakdown)
+            assert total == pytest.approx(row['composite_score'], abs=0.01)
+
+    def test_pct_attribution_sums_near_100(self, sample_sector_aggs):
+        """Percentage attributions should sum to approximately ±100%."""
+        scored = compute_composite_scores(sample_sector_aggs)
+        for sector in scored.index:
+            row = scored.loc[sector]
+            if abs(row['composite_score']) < 0.01:
+                continue  # skip near-zero composites
+            breakdown = contribution_breakdown(row)
+            total_pct = sum(e['pct_of_score'] for e in breakdown)
+            assert abs(total_pct) == pytest.approx(100, abs=5)
+
+    def test_sorted_by_contribution_magnitude(self, sample_sector_aggs):
+        scored = compute_composite_scores(sample_sector_aggs)
+        row = scored.iloc[0]
+        breakdown = contribution_breakdown(row)
+        magnitudes = [abs(e['contribution']) for e in breakdown]
+        assert magnitudes == sorted(magnitudes, reverse=True)

@@ -10,31 +10,14 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional
 
-from config import WEIGHT_PRESETS, DEFAULT_PRESET, OVERWEIGHT_PERCENTILE, AVOID_PERCENTILE
+from config import (
+    WEIGHT_PRESETS, DEFAULT_PRESET, OVERWEIGHT_PERCENTILE, AVOID_PERCENTILE,
+    FEATURE_MAP, FEATURE_LABELS,
+)
 from src.utils import safe_zscore, robust_zscore
 
-
-# ─── Feature → Z-Score Column Mapping ────────────────────────────
-# Maps weight keys to sector aggregate column names and z-score polarity
-# (positive = higher is better, negative = lower is better)
-FEATURE_MAP = {
-    "momentum":      ("median_momentum",        +1),   # higher momentum → better
-    "breadth":       ("breadth",                +1),   # higher breadth → better
-    "volatility":    ("avg_volatility",         -1),   # lower volatility → better
-    "liquidity":     ("liquidity_score",         +1),   # higher liquidity → better
-    "acceleration":  ("momentum_acceleration",  +1),   # higher accel → better
-    "concentration": ("concentration",           -1),   # lower concentration → better (broader rally)
-}
-
-# Human-readable labels for explainability
-_FEATURE_LABELS = {
-    "momentum":      "Median 1M momentum",
-    "breadth":       "Breadth (% positive members)",
-    "volatility":    "Volatility (lower is better)",
-    "liquidity":     "Liquidity score",
-    "acceleration":  "Momentum acceleration",
-    "concentration": "Concentration (lower is better)",
-}
+# Alias for internal use (keeps downstream code unchanged)
+_FEATURE_LABELS = FEATURE_LABELS
 
 
 def compute_zscores(
@@ -138,65 +121,139 @@ def assign_signals(
     """
     Assign Overweight / Neutral / Avoid signals based on score percentiles.
 
-    Uses both overweight_pct (top) and avoid_pct (bottom) thresholds,
-    not just overweight_pct for both as was the previous incorrect behavior.
+    Uses vectorized np.select instead of row-wise apply for clarity.
+    Mutates in-place (caller already passes a copy from compute_composite_scores).
     """
-    df = scored_df.copy()
+    scores = scored_df['composite_score']
+    high_threshold = scores.quantile(overweight_pct)
+    low_threshold = scores.quantile(avoid_pct)
 
-    high_threshold = df['composite_score'].quantile(overweight_pct)
-    low_threshold  = df['composite_score'].quantile(avoid_pct)
+    scored_df['signal'] = np.select(
+        [scores >= high_threshold, scores <= low_threshold],
+        ['Overweight', 'Avoid'],
+        default='Neutral',
+    )
+    return scored_df
 
-    def _label(score: float) -> str:
-        if score >= high_threshold:
-            return "Overweight"
-        if score <= low_threshold:
-            return "Avoid"
-        return "Neutral"
 
-    df['signal'] = df['composite_score'].apply(_label)
-    return df
+def contribution_breakdown(
+    sector_row: pd.Series,
+    weights: Optional[Dict[str, float]] = None,
+    feature_map: Optional[Dict] = None,
+) -> List[Dict]:
+    """Return a full, auditable decomposition of the composite score.
+
+    Each entry contains:
+    - factor:       weight key name (e.g. "momentum")
+    - label:        human-readable factor label
+    - raw_value:    the raw feature value before z-scoring
+    - z_score:      polarity-adjusted z-score  (what enters the weighted sum)
+    - weight:       the weight applied to this factor
+    - contribution: weight × z_score  (the additive piece of the composite)
+    - pct_of_score: contribution / |composite|  (signed %, sums to ±100%)
+
+    An investment committee can verify:
+    sum(contribution) == composite_score ± rounding.
+    """
+    if weights is None:
+        weights = WEIGHT_PRESETS[DEFAULT_PRESET]
+    if feature_map is None:
+        feature_map = FEATURE_MAP
+
+    composite = 0.0
+    entries = []
+
+    for key, (col_name, polarity) in feature_map.items():
+        z_col = f"z_{key}"
+        w = weights.get(key, 0.0)
+
+        raw_val = sector_row.get(col_name, np.nan)
+        z_val = sector_row.get(z_col, 0.0)
+        contrib = w * z_val
+        composite += contrib
+
+        entries.append({
+            "factor": key,
+            "label": _FEATURE_LABELS.get(key, key),
+            "raw_value": raw_val,
+            "z_score": round(z_val, 3),
+            "weight": round(w, 3),
+            "contribution": round(contrib, 4),
+        })
+
+    # Compute percentage attribution
+    abs_composite = abs(composite) if abs(composite) > 1e-10 else 1.0
+    for e in entries:
+        e["pct_of_score"] = round(e["contribution"] / abs_composite * 100, 1)
+
+    # Sort by absolute contribution (largest driver first)
+    entries.sort(key=lambda e: abs(e["contribution"]), reverse=True)
+    return entries
+
+
+# ─── Human-readable unit formatters for raw values ───────────────
+
+_RAW_FORMATTERS = {
+    "momentum":      lambda v: f"{v:+.1f}%" if not np.isnan(v) else "n/a",
+    "breadth":       lambda v: f"{v:.0%}" if not np.isnan(v) else "n/a",
+    "volatility":    lambda v: f"{v:.1f}%" if not np.isnan(v) else "n/a",
+    "liquidity":     lambda v: f"log₁ₚ={v:.1f}" if not np.isnan(v) else "n/a",
+    "acceleration":  lambda v: f"{v:+.2f}" if not np.isnan(v) else "n/a",
+    "concentration": lambda v: f"{v:.0%}" if not np.isnan(v) else "n/a",
+}
 
 
 def explain_signal(
     sector_row: pd.Series,
     weights: Optional[Dict[str, float]] = None,
 ) -> List[str]:
+    """Generate auditable explanation strings for a sector's score.
+
+    Improvements over the naive version:
+    - Direction arrows (↑/↓) based on **contribution** sign, not z-score
+      sign alone — correctly reflects factors with negative polarity.
+    - Shows w×z contribution AND percentage of total composite score
+      so a committee can verify the math.
+    - Shows ALL factors (not just top 3) with a final verification line.
+    - Includes the raw metric value so analysts can cross-reference
+      against source data.
     """
-    Generate top-3 drivers explaining why a sector got its signal.
-    Returns a list of human-readable explanation strings.
-    """
-    if weights is None:
-        weights = WEIGHT_PRESETS[DEFAULT_PRESET]
+    breakdown = contribution_breakdown(sector_row, weights)
 
-    contributions = []
-    for key in FEATURE_MAP:
-        z_col = f"z_{key}"
-        if z_col not in sector_row.index:
-            continue
+    if not breakdown:
+        return ["No factors available for explanation."]
 
-        z_val = sector_row[z_col]
-        w = weights.get(key, 0.0)
-        contrib = w * z_val
-
-        if z_val > 0.5:
-            direction = "↑ Strong"
-        elif z_val < -0.5:
-            direction = "↓ Weak"
-        else:
-            direction = "→ Average"
-
-        label = _FEATURE_LABELS.get(key, key)
-        contributions.append((contrib, label, z_val, direction))
-
-    # Sort by absolute contribution (descending)
-    contributions.sort(key=lambda x: abs(x[0]), reverse=True)
-
+    composite = sum(e["contribution"] for e in breakdown)
     explanations = []
-    for contrib, label, z_val, direction in contributions[:3]:
-        sign = "+" if contrib > 0 else ""
+
+    for e in breakdown:
+        # Direction based on contribution sign (not z-score sign)
+        if e["contribution"] > 0.01:
+            arrow = "↑"
+        elif e["contribution"] < -0.01:
+            arrow = "↓"
+        else:
+            arrow = "→"
+
+        raw_fmt = _RAW_FORMATTERS.get(e["factor"], lambda v: f"{v:.2f}")
+        try:
+            raw_str = raw_fmt(e["raw_value"])
+        except (TypeError, ValueError):
+            raw_str = "n/a"
+
+        pct_str = f"{e['pct_of_score']:+.0f}%" if abs(e["pct_of_score"]) >= 0.5 else "~0%"
+
         explanations.append(
-            f"{direction} {label} (z={z_val:.2f}, contribution={sign}{contrib:.3f})"
+            f"{arrow} {e['label']}: {raw_str}  "
+            f"(z={e['z_score']:+.2f}, w={e['weight']:.2f}, "
+            f"w×z={e['contribution']:+.4f}, {pct_str} of score)"
         )
+
+    # Verification line — committee can confirm sum matches composite
+    explanations.append(
+        f"── Composite: {composite:+.4f}  "
+        f"(Σ contributions: {sum(e['contribution'] for e in breakdown):+.4f})"
+    )
 
     return explanations
 

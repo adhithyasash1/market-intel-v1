@@ -4,7 +4,7 @@ Tests for src/utils.py — safe_zscore, format_pct, format_large_number.
 import pandas as pd
 import numpy as np
 import pytest
-from src.utils import safe_zscore, format_pct, format_large_number
+from src.utils import safe_zscore, format_pct, format_large_number, winsorize, robust_zscore
 
 
 class TestSafeZscore:
@@ -104,3 +104,66 @@ class TestFormatLargeNumber:
 
     def test_string_returns_dash(self):
         assert format_large_number("N/A") == "—"
+
+
+class TestWinsorize:
+    """Winsorization clips outliers to percentile bounds."""
+
+    def test_caps_outliers(self):
+        s = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 100])
+        w = winsorize(s, lower=0.05, upper=0.95)
+        assert w.max() <= 100  # clipped at 95th percentile
+        assert w.max() < 100   # outlier should be capped
+        assert w.min() >= s.quantile(0.05)
+
+    def test_small_series_passthrough(self):
+        """With fewer than 3 non-NaN values, return unchanged."""
+        s = pd.Series([1.0, 2.0])
+        w = winsorize(s)
+        pd.testing.assert_series_equal(w, s)
+
+    def test_empty_series(self):
+        s = pd.Series([], dtype=float)
+        w = winsorize(s)
+        assert len(w) == 0
+
+    def test_nan_tolerance(self):
+        s = pd.Series([1.0, np.nan, 3.0, 4.0, 5.0])
+        w = winsorize(s)
+        assert pd.isna(w.iloc[1])  # NaN preserved
+        assert len(w) == 5
+
+    def test_preserves_index(self):
+        s = pd.Series([10, 20, 30, 40, 50], index=['a', 'b', 'c', 'd', 'e'])
+        w = winsorize(s)
+        assert list(w.index) == ['a', 'b', 'c', 'd', 'e']
+
+
+class TestRobustZscore:
+    """Robust z-score: winsorize then z-score."""
+
+    def test_constant_series_returns_zeros(self):
+        s = pd.Series([5.0, 5.0, 5.0, 5.0])
+        z = robust_zscore(s)
+        assert (z == 0.0).all()
+
+    def test_normal_data_similar_to_safe_zscore(self):
+        """For well-behaved data, robust_zscore ≈ safe_zscore."""
+        s = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        z_safe = safe_zscore(s)
+        z_robust = robust_zscore(s)
+        # Should be very similar (winsorization barely changes well-behaved data)
+        assert abs(z_safe.corr(z_robust)) > 0.99
+
+    def test_outlier_dampens_extreme_zscore(self):
+        """With a massive outlier, robust_zscore should produce more moderate z-scores."""
+        s = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 1000])
+        z_raw = safe_zscore(s)
+        z_robust = robust_zscore(s)
+        # The outlier's z-score should be smaller after winsorization
+        assert abs(z_robust.iloc[-1]) < abs(z_raw.iloc[-1])
+
+    def test_preserves_index(self):
+        s = pd.Series([10, 20, 30], index=['x', 'y', 'z'])
+        z = robust_zscore(s)
+        assert list(z.index) == ['x', 'y', 'z']

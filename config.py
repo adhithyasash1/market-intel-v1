@@ -45,29 +45,37 @@ OVERWEIGHT_PERCENTILE = 0.80   # top 20% → "Overweight"
 AVOID_PERCENTILE      = 0.20   # bottom 20% → "Avoid"
 # middle 60% → "Neutral"
 
+N_OVERWEIGHT  = 2              # sectors to overweight in backtest
+N_UNDERWEIGHT = 2              # sectors to underweight in backtest
+
 # ──────────────────────────────────────────────
 # Sector ETF Mapping (GICS → SPDR ETFs)
 # Used for backtesting with real price history
 # ──────────────────────────────────────────────
+# WARNING: Multiple screener sectors map to the SAME ETF ticker below.
+# In the backtest, this means "Technology Services" and "Electronic Technology"
+# produce identical return streams, inflating apparent diversification.
+# Live scoring is unaffected (it uses individual stocks, not ETFs).
+# Aliases: XLK(2), XLV(2), XLI(4), XLY(2), XLP(2), XLB(2)
 SECTOR_ETF_MAP = {
     "Technology Services":   "XLK",
-    "Electronic Technology": "XLK",
+    "Electronic Technology": "XLK",    # alias → same as Technology Services
     "Finance":               "XLF",
     "Energy Minerals":       "XLE",
     "Health Technology":     "XLV",
-    "Health Services":       "XLV",
+    "Health Services":       "XLV",    # alias → same as Health Technology
     "Producer Manufacturing":"XLI",
-    "Industrial Services":   "XLI",
+    "Industrial Services":   "XLI",    # alias
     "Communications":        "XLC",
     "Consumer Durables":     "XLY",
-    "Retail Trade":          "XLY",
+    "Retail Trade":          "XLY",    # alias
     "Consumer Non-Durables": "XLP",
-    "Distribution Services": "XLP",
+    "Distribution Services": "XLP",    # alias
     "Utilities":             "XLU",
     "Non-Energy Minerals":   "XLB",
-    "Process Industries":    "XLB",
-    "Transportation":        "XLI",
-    "Commercial Services":   "XLI",
+    "Process Industries":    "XLB",    # alias
+    "Transportation":        "XLI",    # alias
+    "Commercial Services":   "XLI",    # alias
     "Miscellaneous":         "SPY",
 }
 
@@ -92,15 +100,57 @@ MARKET_REGIONS = {
 # ──────────────────────────────────────────────
 DEFAULT_REBALANCE_FREQ   = "Monthly"     # Monthly | Quarterly
 DEFAULT_TRANSACTION_COST = 10            # basis points (0.10%)
-TILT_SIZE                = 0.15          # ±15% overweight / underweight
+TILT_SIZE                = 0.10          # ±10% overweight / underweight
+                                          # (was 15%; reduced for 11-sector universe
+                                          #  where each sector is ~9% equal-weight,
+                                          #  so ±15% was nearly 2× the neutral weight)
 MAX_TILT_PER_REBALANCE   = 0.20          # max single-period weight change
 BACKTEST_HISTORY_YEARS   = 5             # years of ETF history to fetch
 WARMUP_DAYS              = 60            # trading days before first rebalance
-MOMENTUM_LOOKBACK        = 20            # days for short-term momentum
+MOMENTUM_LOOKBACK        = 42            # days for short-term momentum
+                                          # (was 20; too short → noise-dominated.
+                                          #  42 days ≈ 2 months, captures one
+                                          #  full earnings cycle.)
 MOMENTUM_LOOKBACK_LONG   = 60            # days for longer-term momentum
 TRADING_DAYS_PER_YEAR    = 252           # annualization factor
 MIN_BACKTEST_DAYS        = 10            # minimum days for valid metrics
 MIN_SECTOR_STOCKS        = 3             # minimum stocks for sector aggregation
+
+# ──────────────────────────────────────────────
+# Signal Stability Tuning
+# ──────────────────────────────────────────────
+SIGMOID_GATE_STEEPNESS   = 50            # ramp speed for acceleration gate
+                                          # sigmoid ≈ 0 when momentum < -5%
+                                          # sigmoid ≈ 1 when momentum > +5%
+SCORE_EMA_ALPHA          = 0.3           # blend: 30% new signal + 70% prior
+MARKET_IMPACT_BPS        = 5             # sqrt-impact cost per unit turnover
+REGIME_DRAWDOWN_THRESH   = -0.15         # SPY drawdown to trigger risk-off
+REGIME_LOOKBACK_DAYS     = 60            # window for drawdown measurement
+
+# ──────────────────────────────────────────────
+# Factor Definitions (single source of truth)
+# Used by scorer.py (live) and backtest.py (historical)
+# ──────────────────────────────────────────────
+# Maps weight keys → (column_name, polarity)
+# polarity: +1 = higher is better, -1 = lower is better
+FEATURE_MAP = {
+    "momentum":      ("median_momentum",        +1),
+    "breadth":       ("breadth",                +1),
+    "volatility":    ("avg_volatility",         -1),
+    "liquidity":     ("liquidity_score",         +1),
+    "acceleration":  ("momentum_acceleration",  +1),
+    "concentration": ("concentration",           -1),
+}
+
+# Human-readable labels for explainability
+FEATURE_LABELS = {
+    "momentum":      "Median 1M momentum",
+    "breadth":       "Breadth (% positive members)",
+    "volatility":    "Volatility (lower is better)",
+    "liquidity":     "Liquidity score",
+    "acceleration":  "Momentum acceleration",
+    "concentration": "Concentration (lower is better)",
+}
 
 # ──────────────────────────────────────────────
 # Data Paths

@@ -81,7 +81,7 @@ class TestComputeStockFeatures:
         pd.testing.assert_series_equal(result['adtv'], expected, check_names=False)
 
     def test_acceleration_gated_by_positive_momentum(self):
-        """Acceleration should be zero when perf_1m is negative (dead-cat bounce filter)."""
+        """Acceleration should be near-zero when perf_1m is negative (sigmoid soft gate)."""
         df = pd.DataFrame({
             'name': ['A', 'B'],
             'price': [100, 200],
@@ -90,10 +90,10 @@ class TestComputeStockFeatures:
             'perf_3m': [-20.0, -1.0],
         })
         result = compute_stock_features(df)
-        # A: perf_1m=-5 <0 → gated → 0.0
-        assert result['momentum_accel'].iloc[0] == 0.0
-        # B: perf_1m=2 >0 → accel = 2 - (-1) = 3.0
-        assert result['momentum_accel'].iloc[1] == pytest.approx(3.0)
+        # A: perf_1m=-5 → sigmoid ≈ 0 → accel ≈ 0
+        assert result['momentum_accel'].iloc[0] == pytest.approx(0.0, abs=1e-6)
+        # B: perf_1m=2 → sigmoid ≈ 1 → accel ≈ raw_accel = 2 - (-1) = 3.0
+        assert result['momentum_accel'].iloc[1] == pytest.approx(3.0, rel=0.01)
 
     def test_missing_volatility_gives_nan_default(self):
         """avg_volatility should default to NaN, not 0.0, when missing."""

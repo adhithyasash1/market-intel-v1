@@ -95,6 +95,28 @@ def robust_zscore(
     return safe_zscore(clipped)
 
 
+def sigmoid_gate(x, steepness: float = None):
+    """Smooth 0→1 gate that ramps as x goes through zero.
+
+    Used by momentum acceleration to avoid the hard cutoff where
+    a tiny momentum change flips acceleration from 0 to its full value.
+
+    Parameters
+    ----------
+    x : scalar, array, or pd.Series — momentum values
+    steepness : ramp speed (default: config.SIGMOID_GATE_STEEPNESS)
+
+    Returns
+    -------
+    Same type as x, values in [0, 1].
+    """
+    import numpy as np
+    if steepness is None:
+        from config import SIGMOID_GATE_STEEPNESS
+        steepness = SIGMOID_GATE_STEEPNESS
+    return 1.0 / (1.0 + np.exp(-steepness * x))
+
+
 def ensure_dir(path: str) -> str:
     """Create directory if it doesn't exist, return path."""
     os.makedirs(path, exist_ok=True)
