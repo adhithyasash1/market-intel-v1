@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def sample_stock_df():
     """
     A minimal stock-level DataFrame mimicking _standardize_columns output.
@@ -51,7 +51,7 @@ def sample_stock_df():
     })
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def sample_sector_aggs():
     """Sector-level aggregates with 5 sectors for testing scoring."""
     sectors = [
@@ -72,7 +72,7 @@ def sample_sector_aggs():
     }, index=sectors)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def sample_etf_prices():
     """
     Synthetic daily ETF prices for 3 sector ETFs + benchmark.
@@ -92,7 +92,7 @@ def sample_etf_prices():
     return prices
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def known_returns_series():
     """
     A simple daily returns series with known cumulative return

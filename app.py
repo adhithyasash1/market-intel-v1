@@ -819,46 +819,52 @@ with tab_backtest:
                 st.plotly_chart(fig_bt, width="stretch")
 
                 # ── Bootstrap Test ──
-                with st.expander("📊 Bootstrap Significance Test (1000 samples)"):
-                    try:
-                        bootstrap = bootstrap_test(
-                            result.portfolio_returns,
-                            result.benchmark_returns,
-                            n_samples=1000,
-                        )
-                        if bootstrap:
-                            for key, (mean_val, p5, p95) in bootstrap.items():
-                                col_a, col_b = st.columns([1, 2])
-                                with col_a:
-                                    st.metric(key.title(), f"{mean_val:.2f}%")
-                                with col_b:
-                                    st.write(f"90% CI: [{p5:.2f}%, {p95:.2f}%]")
-                                    significant = (p5 > 0) if key == 'alpha' else True
-                                    if significant:
-                                        st.success("✅ Statistically significant at 90% level")
-                                    else:
-                                        st.warning("⚠️ Not significant — CI includes zero")
-                    except Exception as e:
-                        st.warning(f"Bootstrap test failed: {e}")
+                with st.expander("📊 Bootstrap Significance Test"):
+                    st.caption("Run block-bootstrap simulation (1000 samples) to verify if Alpha/Sharpe are statistically significant.")
+                    if st.button("Run Bootstrap Analysis"):
+                        with st.spinner("Running simulation..."):
+                            try:
+                                bootstrap = bootstrap_test(
+                                    result.portfolio_returns,
+                                    result.benchmark_returns,
+                                    n_samples=1000,
+                                )
+                                if bootstrap:
+                                    for key, (mean_val, p5, p95) in bootstrap.items():
+                                        col_a, col_b = st.columns([1, 2])
+                                        with col_a:
+                                            st.metric(key.title(), f"{mean_val:.2f}%")
+                                        with col_b:
+                                            st.write(f"90% CI: [{p5:.2f}%, {p95:.2f}%]")
+                                            significant = (p5 > 0) if key == 'alpha' else True
+                                            if significant:
+                                                st.success("✅ Statistically significant at 90% level")
+                                            else:
+                                                st.warning("⚠️ Not significant — CI includes zero")
+                            except Exception as e:
+                                st.warning(f"Bootstrap test failed: {e}")
 
                 # ── Sensitivity Analysis ──
-                with st.expander("🔬 Sensitivity Analysis (Presets × Rebalance Freq)"):
-                    try:
-                        sens_df = sensitivity_analysis(etf_prices_cached)
-                        if len(sens_df) > 0:
-                            st.dataframe(
-                                sens_df.style.format({
-                                    'annualized_return': '{:.1f}%',
-                                    'sharpe_ratio': '{:.3f}',
-                                    'max_drawdown': '{:.1f}%',
-                                    'hit_rate': '{:.0f}%',
-                                    'alpha': '{:.2f}%',
-                                    'information_ratio': '{:.3f}',
-                                }),
-                                width="stretch", hide_index=True,
-                            )
-                    except Exception as e:
-                        st.warning(f"Sensitivity analysis failed: {e}")
+                with st.expander("🔬 Sensitivity Analysis"):
+                    st.caption("Test strategy robustness across different presets and rebalancing frequencies.")
+                    if st.button("Run Sensitivity Analysis"):
+                        with st.spinner("Running multi-scenario backtests..."):
+                            try:
+                                sens_df = sensitivity_analysis(etf_prices_cached)
+                                if len(sens_df) > 0:
+                                    st.dataframe(
+                                        sens_df.style.format({
+                                            'annualized_return': '{:.1f}%',
+                                            'sharpe_ratio': '{:.3f}',
+                                            'max_drawdown': '{:.1f}%',
+                                            'hit_rate': '{:.0f}%',
+                                            'alpha': '{:.2f}%',
+                                            'information_ratio': '{:.3f}',
+                                        }),
+                                        width="stretch", hide_index=True,
+                                    )
+                            except Exception as e:
+                                st.warning(f"Sensitivity analysis failed: {e}")
 
             else:
                 st.warning("Insufficient data for backtest. Need at least 60 trading days of ETF history.")

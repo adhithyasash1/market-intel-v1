@@ -7,7 +7,7 @@ import pytest
 
 from src.features import (
     compute_stock_features, compute_sector_aggregates,
-    _safe_column_diff, _sector_concentration,
+    _safe_column_diff, _vectorized_concentration,
 )
 from config import MIN_SECTOR_STOCKS
 
@@ -66,12 +66,12 @@ class TestComputeStockFeatures:
         assert result['rsi_zone'].iloc[1] == 'Overbought'
 
     def test_missing_sma_columns(self):
-        """Without SMA columns, golden_cross etc. should be NaN."""
+        """Without SMA columns, golden_cross etc. should be 0 (default)."""
         df = pd.DataFrame({
             'name': ['A'], 'price': [100], 'sector': ['Tech'],
         })
         result = compute_stock_features(df)
-        assert pd.isna(result['golden_cross'].iloc[0])
+        assert result['golden_cross'].iloc[0] == 0
 
     def test_adtv_uses_avg_vol_30d(self, sample_stock_df):
         """ADTV should use log1p(avg_vol_30d * price) when available."""
@@ -110,25 +110,43 @@ class TestComputeStockFeatures:
 
 
 class TestSectorConcentration:
-    """§2 — _sector_concentration edge cases."""
+    """§2 — _vectorized_concentration edge cases."""
 
     def test_normal_case(self):
-        df = pd.DataFrame({'market_cap': [100, 50, 30, 20]})
-        result = _sector_concentration(df)
-        # Top 3: 100 + 50 + 30 = 180, total = 200
-        assert result == pytest.approx(0.9)
+        # Top 3 share
+        df = pd.DataFrame({
+            'market_cap': [100, 50, 30, 20],
+            'sector': ['Tech'] * 4
+        })
+        result = _vectorized_concentration(df)
+        # Top 3: 100 + 50 + 30 = 180, total = 200 → 0.9
+        assert result.loc['Tech'] == pytest.approx(0.9)
 
     def test_fewer_than_3_returns_1(self):
-        df = pd.DataFrame({'market_cap': [100, 50]})
-        assert _sector_concentration(df) == 1.0
+        df = pd.DataFrame({
+            'market_cap': [100, 50],
+            'sector': ['Tech'] * 2
+        })
+        result = _vectorized_concentration(df)
+        assert result.loc['Tech'] == 1.0
 
     def test_total_zero_returns_1(self):
-        df = pd.DataFrame({'market_cap': [0, 0, 0, 0]})
-        assert _sector_concentration(df) == 1.0
+        df = pd.DataFrame({
+            'market_cap': [0, 0, 0, 0],
+            'sector': ['Tech'] * 4
+        })
+        result = _vectorized_concentration(df)
+        # 0 / 1.0 (replacement) = 0.0
+        assert result.loc['Tech'] == 0.0
 
     def test_missing_market_cap_column(self):
-        df = pd.DataFrame({'price': [100, 200]})
-        assert _sector_concentration(df) == 0.5
+        df = pd.DataFrame({
+            'price': [100, 200],
+            'sector': ['Tech', 'Fin']
+        })
+        result = _vectorized_concentration(df)
+        # Fallback to 0.5
+        assert (result == 0.5).all()
 
 
 class TestComputeSectorAggregates:

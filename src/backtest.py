@@ -503,8 +503,8 @@ def bootstrap_test(
 
     # 6. Fancy indexing to fetch return values
     # active_rets_arr: (N,)
-    active_rets_arr = active_returns.values
-    port_rets_arr = portfolio_returns.values
+    active_rets_arr = active_returns.values.astype(np.float32)
+    port_rets_arr = portfolio_returns.values.astype(np.float32)
 
     # sample_active: (S, N)
     sample_active = active_rets_arr[indices]

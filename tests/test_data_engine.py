@@ -9,6 +9,7 @@ from unittest.mock import patch
 from src.data_engine import (
     _standardize_columns, save_snapshot, load_snapshot,
     load_or_fetch_snapshot, get_available_snapshots,
+    DataFetchError,
 )
 
 
@@ -129,18 +130,20 @@ class TestLoadOrFetchSnapshot:
             df = pd.DataFrame({'price': [99], 'sector': ['Fin']})
             save_snapshot(df, '2024-01-10')
 
+            # Mock raising DataFetchError
             with patch('src.data_engine.fetch_screener_snapshot',
-                       side_effect=RuntimeError("API down")):
+                       side_effect=DataFetchError("API down")):
                 result = load_or_fetch_snapshot('2024-01-15')
                 # Should fallback to the 2024-01-10 snapshot
                 assert result is not None
                 assert result['price'].iloc[0] == 99
 
     def test_raises_when_no_cache_and_fetch_fails(self, tmp_path):
-        """Should raise RuntimeError when both live and cache fail."""
+        """Should raise DataFetchError when both live and cache fail."""
         with patch('src.data_engine.SNAPSHOT_DIR', str(tmp_path)), \
              patch('src.data_engine.ensure_dirs'), \
              patch('src.data_engine.fetch_screener_snapshot',
-                   side_effect=RuntimeError("API down")):
-            with pytest.raises(RuntimeError, match="No live data"):
+                   side_effect=DataFetchError("API down")):
+            # Should re-raise the original DataFetchError
+            with pytest.raises(DataFetchError, match="API down"):
                 load_or_fetch_snapshot('2024-01-15')
