@@ -236,6 +236,6 @@ jobs:
 
 **License**: MIT 
 
-**Maintainer**: R Sashi Adhithya (Contact: [placeholder])
+**Maintainer**: R Sashi Adhithya (Contact: [21f3000611@ds.study.iitm.ac.in])
 
 *This software is for educational and research purposes only. It is not financial advice.*
