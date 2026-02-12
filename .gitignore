@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Data caches (regenerated at runtime)
+data/etf_cache/
+data/snapshots/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
