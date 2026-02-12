@@ -1,241 +1,145 @@
-# Market Intelligence & Sector Rotation Dashboard
+# Market Intelligence Dashboard
 
-> **Elevator Pitch**: A production-ready, quantitative dashboard for real-time sector rotation analysis, backtesting, and automated market intelligence reporting.
+> **Elevator Pitch**: A high-performance, quantitative sector rotation engine that combines a real-time Streamlit dashboard for visual analysis with an async FastAPI backend for algorithmic trading integration.
 
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
-![Streamlit](https://img.shields.io/badge/streamlit-1.28%2B-FF4B4B)
-![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-green)
-
-This repository hosts a robust Streamlit application designed for quantitative researchers and portfolio managers. It aggregates real-time data from TradingView and Yahoo Finance to compute multi-factor sector scores (Momentum, Volatility, Breadth), providing actionable "Overweight" or "Avoid" signals backed by vectorized backtesting and rigorous sensitivity analysis.
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python)
+![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker)
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
 
 ---
 
-## 📋 Table of Contents
+## 🏗️ Architecture
 
-- [Features](#-features)
-- [Architecture & Files](#-architecture--files)
-- [Quick Start](#-quick-start)
-- [Development & Testing](#-development--testing)
-- [Configuration](#-configuration)
-- [Data Sources & Caching](#-data-sources--caching)
-- [Running Backtests](#-running-backtests)
-- [Exports & Reports](#-exports--reports)
-- [CI/CD & Security](#-cicd--security)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
+The project employs a **Hybrid Architecture** designed for scalability and code reuse. The frontend and backend are decoupled services that share a common core library (`src/`) and data volume, ensuring a Single Source of Truth for all financial logic.
+
+```mermaid
+graph TD
+    subgraph "Core Logic (src/)"
+        A[Data Engine] --> B[Features & Signals]
+        B --> C[Vectorized Scorer]
+        C --> D[Backtest Engine]
+    end
+
+    subgraph "Services"
+        UI[Streamlit Dashboard<br>(app.py)]
+        API[FastAPI Backend<br>(api/)]
+    end
+
+    subgraph "Data Layer"
+        Cache[(Parquet Cache<br>/data)]
+    end
+
+    UI --> A
+    API --> A
+    A <--> Cache
+```
+
+- **Frontend (`app.py`)**: Interactive Streamlit dashboard for research, backtesting, and report generation.
+- **Backend (`api/`)**: High-throughput FastAPI service for programmatic access and external integrations.
+- **Core (`src/`)**: Shared library containing all business logic (data fetching, signal generation, backtesting).
+- **Data**: Shared Docker volume for persistent caching of market data.
 
 ---
 
 ## ✨ Features
 
-- **Live Scoring**: Real-time composite scoring of 11 GICS sectors based on customizable factors.
-- **Multi-Factor Model**: Combines Momentum, Volatility, Market Breadth, Liquidity, and Acceleration.
-- **Explainability**: Clear "Why?" tooltips for every signal (e.g., "High Volatility", "Breakout").
-- **Vectorized Backtesting**: High-performance engine (~60ms/run) to validate strategies over 1-5 years.
-- **Scenario Analysis**: Stress-test portfolios against hypothetical volatility shocks or momentum shifts.
-- **Automated Reporting**: One-click generation of governance-ready investment memos and CSV exports.
+### 📊 Dashboard Capabilities (Streamlit)
+*   **Sector Rotation Strategy**: Real-time scoring of 11 GICS sectors based on Momentum, Volatility, Breadth, and Liquidity.
+*   **Visual Backtesting**: Interactive simulations with customizable parameters (rebalance frequency, transaction costs).
+*   **Scenario Analysis**: specific stress-testing tools (e.g., "What if Volatility spikes 50%?").
+*   **Automated Reporting**: One-click generation of investment memos and CSV exports.
+
+### ⚡ API Capabilities (FastAPI)
+*   **Programmatic Access**: Fetch live sector scores and signals via REST.
+*   **Algo-Trading Triggers**: Webhook-ready endpoints for automated execution bots.
+*   **Compute Offloading**: Offload heavy backtest simulations to the backend server.
+*   **Async I/O**: Non-blocking architecture for high-concurrency requests.
 
 ---
 
-## 📂 Architecture & Files
+## 🚀 Quick Start (Docker)
 
-| File/Folder | Description |
-|---|---|
-| `app.py` | Main Streamlit application entry point. |
-| `config.py` | Central configuration for tickers, weights, thresholds, and paths. |
-| `src/data_engine.py` | Fetches and caches data from TradingView and YFinance. |
-| `src/features.py` | Computes technical indicators (RSI, Volatility, Breadth). |
-| `src/scorer.py` | Normalizes features and calculates composite Z-scores. |
-| `src/backtest.py` | Vectorized backtesting engine (NumPy-optimized). |
-| `src/observability.py` | Structured logging and Prometheus metrics hooks. |
-| `reports/` | Directory for generated audit reports, memos, and performance profiles. |
-| `tests/` | Unit and integration tests (pytest). |
-| `k8s/` | Kubernetes manifests (Deployment, NetworkPolicy, CronJobs). |
+The preferred way to run the full stack is via Docker Compose.
 
----
+1.  **Start the Stack**
+    ```bash
+    docker-compose up --build
+    ```
 
-## 🚀 Quick Start
+2.  **Access Services**
+    *   **Dashboard**: [http://localhost:8501](http://localhost:8501)
+    *   **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### Prerequisites
-- Python 3.10+
-- Internet access (for TradingView/Yahoo Finance API)
-
-### Installation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/adhithyasash1/testing.git adhithyasash1-testing
-cd adhithyasash1-testing
-
-# 2. Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Run the application
-streamlit run app.py
-```
-
-The dashboard will open at `http://localhost:8501`.
+3.  **Stop**
+    ```bash
+    docker-compose down
+    ```
 
 ---
 
-## 🛠️ Development & Testing
+## 🛠️ Local Development
 
-We use `pytest` for testing and `flake8` for linting.
+For contributors who prefer running locally without Docker:
 
-### Run Test Suite
-```bash
-# Run all tests
-pytest -q
+1.  **Environment Setup**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # Windows: venv\Scripts\activate
+    pip install -r requirements.txt
+    ```
 
-# Run specific test file
-pytest tests/test_backtest.py
+2.  **Run Dashboard**
+    ```bash
+    streamlit run app.py
+    ```
 
-# Run linters
-flake8 . --max-line-length=120
-mypy src --ignore-missing-imports
-```
+3.  **Run API**
+    ```bash
+    uvicorn api.main:app --reload --port 8000
+    ```
 
-### Run Backtest Benchmark
-verify performance regressions:
-```bash
-python perf/benchmark.py
-# Outputs baseline comparison to reports/perf_baseline.txt
-```
+---
+
+## 📡 API Documentation
+
+Access the full interactive Swagger UI at `/docs`. Key endpoints include:
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/market/snapshot` | Get latest market snapshot and sector data. |
+| `POST` | `/analysis/score` | Compute sector scores with custom weights. |
+| `POST` | `/backtest/run` | Run a full vectorized backtest simulation. |
+| `GET` | `/health` | Service health check. |
 
 ---
 
 ## ⚙️ Configuration
 
-Start with `config.py` to customize the model:
-- **`SECTOR_ETF_MAP`**: Define the universe of ETFs (e.g., XLK, XLV).
-- **`PRESETS`**: Adjust factor weights (e.g., `Aggressive`: higher momentum weight).
-- **`lookback_days`**: Time window for volatility/momentum calculations.
+Tune the model via `config.py`. Key parameters:
 
-**Directories**:
-- `data/etf_cache/`: Stores daily OHLCV data (parquet).
-- `data/snapshots/`: Stores screener snapshots.
+*   `WEIGHT_PRESETS`: Define custom scoring mixes (Momentum vs. Volatility focus).
+*   `MOMENTUM_LOOKBACK`: Default lookback window for return calculations (e.g., 21 days).
+*   `SECTOR_ETFS`: List of ticker symbols for the sector universe.
+*   `SNAPSHOT_DIR`: Path for caching real-time data.
 
-Ensure directories exist:
-```python
-from src.utils import ensure_dirs
-ensure_dirs()
+---
+
+## 📂 Project Structure
+
+```text
+├── api/                 # FastAPI Backend
+│   ├── routes/          # API Endpoints (market_data, analysis, backtest)
+│   ├── services.py      # Business logic interface
+│   └── main.py          # App entry point
+├── src/                 # Shared Core Library
+│   ├── data_engine.py   # Data fetching & caching (TradingView/YFinance)
+│   ├── features.py      # Signal generation & feature engineering
+│   ├── backtest.py      # Vectorized backtest engine
+│   └── scorer.py        # Composite scoring logic
+├── app.py               # Streamlit Frontend
+├── config.py            # Global Configuration
+├── data/                # Local data cache (Parquet)
+├── Dockerfile           # Multi-stage build
+└── docker-compose.yml   # Orchestration
 ```
-
----
-
-## 📊 Data Sources & Caching
-
-1. **TradingView (`tvscreener`)**: Used for real-time sector metrics (P/E, volume, performance).
-2. **Yahoo Finance (`yfinance`)**: Used for historical price data (backtesting).
-
-**Caching Strategy**:
-- Data is cached in `data/` as Parquet files.
-- **TTL**: Screener data expires in 15 minutes; Price data expires in 18 hours.
-- **Force Refresh**: Click "🔄 Refresh Screener Data" in the sidebar to clear immediate cache.
-
----
-
-## 📈 Running Backtests & Reproducibility
-
-The backtesting engine is fully vectorized for speed and determinism.
-
-```python
-from src.backtest import run_backtest
-from src.data_engine import fetch_history
-
-# Load data
-prices = fetch_history(tickers, period="2y")
-
-# Run backtest
-results = run_backtest(
-    prices,
-    weights=target_weights, 
-    rebalance_freq=21, 
-    cost_bps=10
-)
-print(f"Sharpe: {results.sharpe_ratio:.2f}")
-```
-
-**Reproducibility**:
-- `bootstrap_test` uses a fixed seed (`42`) by default for stable p-values.
-- Results are visually reproducible in the "Backtest" tab.
-
----
-
-## 📥 Exports & Reports
-
-- **Investment Memo**: Auto-generated Markdown file (`reports/sector_memo_YYYY-MM-DD.md`) summarizing "Overweight" vs "Avoid" signals with reasoning.
-- **Rankings CSV**: Full breakdown of Z-scores and raw metrics.
-- **Audit Reports**: Released versions include `reports/release_audit.md` certifying test passes and security scans.
-
----
-
-## 🔐 CI/CD & Security
-
-### Security Hardening
-- **Secrets**: NEVER commit API keys. Use environment variables.
-  ```bash
-  # Check for leaks
-  git grep -E "(API_KEY|SECRET|TOKEN)"
-  ```
-- **Docker**: Images run as non-root user (`appuser`, UID 10001).
-- **Network**: Kubernetes Default-Deny egress policy enabled.
-
-### CI Pipeline (GitHub Actions)
-```yaml
-# .github/workflows/ci.yml snippet
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: pip install -r requirements.txt
-      - run: pytest
-      - run: safety check
-```
-
----
-
-## ❓ Troubleshooting
-
-1. **`yfinance` Network Error**: heavily rate-limited? Wait 5 mins or use a VPN/proxy.
-2. **`tvscreener` Warnings**: "Column not found"? The API mapping might have changed. Check `config.py`.
-3. **Streamlit Render Error**: `AttributeError: module 'streamlit' has no attribute 'dataframe'`. Update Streamlit: `pip install --upgrade streamlit`.
-4. **Corrupt Cache**: "Parquet error"? Delete `data/etf_cache/*.parquet`.
-5. **Backtest "Not Enough Data"**: Ensure `fetch_history` requested enough buffer (e.g., `period="2y"` for 1y backtest).
-6. **Timezones**: Data is UTC-normalized. Comparisons usually align associated dates.
-
----
-
-## ⚡ Performance Tips
-
-- **Vectorize**: Use `numpy` arrays for price operations, not `pandas` rows iteration.
-- **Broadcasting**: Pre-calculate weights for all rebalance dates at once.
-- **Profiling**:
-  ```bash
-  python -m pyinstrument -m src.backtest
-  ```
-
----
-
-## 🤝 Contributing
-
-1. **Fork & Branch**: Use `feat/new-factor` or `fix/cache-bug`.
-2. **Test**: Ensure `pytest` passes.
-3. **PR**: Submit pull request with a description of changes.
-
----
-
-## 📄 License & Maintainers
-
-**License**: MIT 
-
-**Maintainer**: R Sashi Adhithya (Contact: 21f3000611@ds.study.iitm.ac.in)
-
-*This software is for educational and research purposes only. It is not financial advice.*
