@@ -11,27 +11,29 @@ import numpy as np
 from typing import Dict, List, Optional
 
 from config import WEIGHT_PRESETS, DEFAULT_PRESET, OVERWEIGHT_PERCENTILE, AVOID_PERCENTILE
-from src.utils import safe_zscore
+from src.utils import safe_zscore, robust_zscore
 
 
 # ─── Feature → Z-Score Column Mapping ────────────────────────────
 # Maps weight keys to sector aggregate column names and z-score polarity
 # (positive = higher is better, negative = lower is better)
 FEATURE_MAP = {
-    "momentum":     ("median_momentum",        +1),   # higher momentum → better
-    "breadth":      ("breadth",                +1),   # higher breadth → better
-    "volatility":   ("avg_volatility",         -1),   # lower volatility → better
-    "liquidity":    ("liquidity_score",         +1),   # higher liquidity → better
-    "acceleration": ("momentum_acceleration",  +1),   # higher accel → better
+    "momentum":      ("median_momentum",        +1),   # higher momentum → better
+    "breadth":       ("breadth",                +1),   # higher breadth → better
+    "volatility":    ("avg_volatility",         -1),   # lower volatility → better
+    "liquidity":     ("liquidity_score",         +1),   # higher liquidity → better
+    "acceleration":  ("momentum_acceleration",  +1),   # higher accel → better
+    "concentration": ("concentration",           -1),   # lower concentration → better (broader rally)
 }
 
 # Human-readable labels for explainability
 _FEATURE_LABELS = {
-    "momentum":     "Median 1M momentum",
-    "breadth":      "Breadth (% positive members)",
-    "volatility":   "Volatility (lower is better)",
-    "liquidity":    "Liquidity score",
-    "acceleration": "Momentum acceleration",
+    "momentum":      "Median 1M momentum",
+    "breadth":       "Breadth (% positive members)",
+    "volatility":    "Volatility (lower is better)",
+    "liquidity":     "Liquidity score",
+    "acceleration":  "Momentum acceleration",
+    "concentration": "Concentration (lower is better)",
 }
 
 
@@ -62,7 +64,13 @@ def compute_zscores(
     for weight_key, (col_name, polarity) in feature_map.items():
         z_col = f"z_{weight_key}"
         if col_name in result.columns:
-            result[z_col] = safe_zscore(result[col_name]) * polarity
+            # Winsorize then z-score: limits outlier dominance in small
+            # cross-sections (N=11 sectors) where one extreme value can
+            # shift mean/std dramatically, causing fragile rankings.
+            result[z_col] = robust_zscore(result[col_name]) * polarity
+            # Fill NaN z-scores with 0.0 so missing data contributes zero
+            # to the composite score rather than propagating NaN
+            result[z_col] = result[z_col].fillna(0.0)
         else:
             result[z_col] = 0.0
     return result

@@ -74,10 +74,39 @@ class TestComputeStockFeatures:
         assert pd.isna(result['golden_cross'].iloc[0])
 
     def test_adtv_uses_avg_vol_30d(self, sample_stock_df):
-        """ADTV should use avg_vol_30d * price when available."""
+        """ADTV should use log1p(avg_vol_30d * price) when available."""
         result = compute_stock_features(sample_stock_df)
-        expected = sample_stock_df['avg_vol_30d'] * sample_stock_df['price']
+        raw_adtv = sample_stock_df['avg_vol_30d'] * sample_stock_df['price']
+        expected = np.log1p(raw_adtv.clip(lower=0))
         pd.testing.assert_series_equal(result['adtv'], expected, check_names=False)
+
+    def test_acceleration_gated_by_positive_momentum(self):
+        """Acceleration should be zero when perf_1m is negative (dead-cat bounce filter)."""
+        df = pd.DataFrame({
+            'name': ['A', 'B'],
+            'price': [100, 200],
+            'sector': ['Tech', 'Fin'],
+            'perf_1m': [-5.0, 2.0],
+            'perf_3m': [-20.0, -1.0],
+        })
+        result = compute_stock_features(df)
+        # A: perf_1m=-5 <0 → gated → 0.0
+        assert result['momentum_accel'].iloc[0] == 0.0
+        # B: perf_1m=2 >0 → accel = 2 - (-1) = 3.0
+        assert result['momentum_accel'].iloc[1] == pytest.approx(3.0)
+
+    def test_missing_volatility_gives_nan_default(self):
+        """avg_volatility should default to NaN, not 0.0, when missing."""
+        n = 5
+        df = pd.DataFrame({
+            'name': [f'S{i}' for i in range(n)],
+            'sector': ['Tech'] * n,
+            'perf_1m': [1.0] * n,
+            'positive_1m': [1] * n,
+            # No volatility_d, no atr_14
+        })
+        result = compute_sector_aggregates(df)
+        assert pd.isna(result.loc['Tech', 'avg_volatility'])
 
 
 class TestSectorConcentration:

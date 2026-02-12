@@ -23,6 +23,9 @@ from src.utils import safe_zscore
 
 logger = logging.getLogger(__name__)
 
+# Volume data for ADTV computation (loaded lazily)
+_etf_volume: Optional[pd.DataFrame] = None
+
 
 @dataclass
 class BacktestResult:
@@ -55,14 +58,30 @@ def _compute_etf_features(
     prices: pd.DataFrame,
     date: pd.Timestamp,
     lookback: int = MOMENTUM_LOOKBACK,
+    volume: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
-    Compute sector features from ETF price history STRICTLY before `date`.
+    Compute sector features from ETF price history STRICTLY before ``date``.
     Uses only data available at the decision point (no lookahead).
 
-    The key change from the original: we use prices.loc[:date - 1 day]
-    to prevent using the rebalance day's price for scoring while also
-    using it for return computation.
+    Factor Definitions (vs. Live Scoring)
+    -------------------------------------
+    These are **ETF-level proxies** of the live stock-level factors.
+    They are computed from a single ETF per sector, not from
+    constituent stocks. Known differences from live scoring:
+
+    - **Momentum**: rolling price return (vs. live: median of stocks'
+      screener-reported cumulative 1M return).
+    - **Breadth**: fraction of positive-return *days* in lookback
+      (vs. live: fraction of stocks with positive 1M return).
+      This measures time-series persistence, not cross-sectional
+      participation.
+    - **Volatility**: realized std of daily returns in lookback
+      (vs. live: median of screener-reported daily historical vol).
+    - **Liquidity**: log ADTV from volume × price
+      (vs. live: log median ADTV of constituent stocks).
+    - **Acceleration**: gated short-minus-long momentum
+      (same concept as live, but computed from ETF prices).
     """
     etf_cols = [c for c in prices.columns if c != BENCHMARK_ETF]
 
@@ -85,7 +104,12 @@ def _compute_etf_features(
     # Longer-term momentum (for acceleration)
     if len(hist) >= MOMENTUM_LOOKBACK_LONG + 5:
         ret_long = hist.iloc[-1] / hist.iloc[-MOMENTUM_LOOKBACK_LONG] - 1
-        features['momentum_acceleration'] = features['median_momentum'] - ret_long
+        raw_accel = features['median_momentum'] - ret_long
+        # Soft gate: sigmoid ramp from 0→1 as momentum goes 0→5%
+        # This avoids the hard cutoff where a 0.01% momentum change
+        # can flip acceleration from 0 to its full value.
+        gate = 1.0 / (1.0 + np.exp(-50 * features['median_momentum']))
+        features['momentum_acceleration'] = raw_accel * gate
     else:
         features['momentum_acceleration'] = 0.0
 
@@ -96,19 +120,51 @@ def _compute_etf_features(
     # Breadth proxy: fraction of days positive in lookback window
     features['breadth'] = (daily_rets > 0).mean()
 
-    # Liquidity proxy: average price level as proxy
-    features['liquidity_score'] = hist.iloc[-lookback:].mean()
+    # Liquidity: log ADTV (volume × price), consistent with live scoring
+    if volume is not None:
+        vol_hist = volume.loc[prior_dates].reindex(columns=etf_cols)
+        if len(vol_hist) >= lookback:
+            avg_vol = vol_hist.iloc[-lookback:].mean()
+            avg_price = hist.iloc[-lookback:].mean()
+            raw_adtv = avg_vol * avg_price
+            features['liquidity_score'] = np.log1p(raw_adtv.clip(lower=0))
+        else:
+            features['liquidity_score'] = np.nan
+    else:
+        # Fallback: no volume data available
+        features['liquidity_score'] = np.nan
 
     return features
 
 
-def _score_etfs(features: pd.DataFrame, weights: Dict[str, float]) -> pd.Series:
+# EMA smoothing coefficient for score blending across rebalance dates.
+# α=0.3 means 30% new signal + 70% prior score, reducing sign flips
+# and ranking instability at month boundaries.
+SCORE_EMA_ALPHA = 0.3
+
+
+def _score_etfs(
+    features: pd.DataFrame,
+    weights: Dict[str, float],
+    prev_scores: Optional[pd.Series] = None,
+) -> pd.Series:
     """
     Score ETFs using the shared composite scoring logic from scorer.py.
     This ensures the backtest uses identical scoring to the live dashboard.
+
+    If ``prev_scores`` is provided, blends with EMA for temporal stability:
+    score_t = α * raw_t + (1 - α) * score_{t-1}
     """
     scored = compute_zscores(features, feature_map=FEATURE_MAP)
-    return compute_weighted_score(scored, weights, feature_map=FEATURE_MAP)
+    raw = compute_weighted_score(scored, weights, feature_map=FEATURE_MAP)
+
+    if prev_scores is not None:
+        # Align indices (some ETFs may appear/disappear)
+        common = raw.index.intersection(prev_scores.index)
+        blended = raw.copy()
+        blended[common] = SCORE_EMA_ALPHA * raw[common] + (1 - SCORE_EMA_ALPHA) * prev_scores[common]
+        return blended
+    return raw
 
 
 # ─── Core Backtest ───────────────────────────────────────────────
@@ -121,6 +177,7 @@ def run_backtest(
     n_overweight: int = 2,
     n_underweight: int = 2,
     tilt_size: float = TILT_SIZE,
+    etf_volume: Optional[pd.DataFrame] = None,
 ) -> BacktestResult:
     """
     Run a sector-tilt backtest simulation.
@@ -140,6 +197,17 @@ def run_backtest(
         raise TypeError(
             f"etf_prices must have a DatetimeIndex, got {type(etf_prices.index).__name__}"
         )
+
+    # Load volume data for ADTV-based liquidity scoring
+    volume = etf_volume
+    if volume is None:
+        try:
+            from src.data_engine import load_etf_volume
+            volume = load_etf_volume()
+        except ImportError:
+            pass
+    if volume is not None:
+        logger.info("Using ETF volume data for ADTV-based liquidity scoring.")
 
     etf_cols = [c for c in etf_prices.columns if c != BENCHMARK_ETF]
     if not etf_cols:
@@ -174,16 +242,18 @@ def run_backtest(
     daily_records: List[Tuple[pd.Timestamp, float, float]] = []
     weight_log = []
     prev_weights = pd.Series(equal_weight, index=etf_cols)
+    prev_scores: Optional[pd.Series] = None  # for EMA score blending
     # Convert basis points to fraction: 10 bps → 0.001 (0.10%)
     cost_rate = transaction_cost_bps / 10_000.0
 
     for i, date in enumerate(valid_dates):
         # Score sectors at rebalance using data BEFORE this date
-        features = _compute_etf_features(prices, date)
+        features = _compute_etf_features(prices, date, volume=volume)
         if features.empty:
             target_weights = pd.Series(equal_weight, index=etf_cols)
         else:
-            scores = _score_etfs(features, weights)
+            scores = _score_etfs(features, weights, prev_scores=prev_scores)
+            prev_scores = scores  # carry forward for next EMA blend
             ranked = scores.sort_values(ascending=False)
 
             target_weights = pd.Series(equal_weight, index=etf_cols)

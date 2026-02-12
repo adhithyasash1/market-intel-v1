@@ -35,7 +35,15 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 
     # ── Momentum acceleration: short-term vs medium-term momentum ──
-    out['momentum_accel'] = _safe_column_diff(out, 'perf_1m', 'perf_3m')
+    # Soft sigmoid gate prevents discontinuity where a tiny momentum change
+    # flips acceleration from 0 to full value (hard gate instability).
+    # sigmoid(-50 * x) ≈ 0 when x < -0.05, ≈ 1 when x > 0.05
+    raw_accel = _safe_column_diff(out, 'perf_1m', 'perf_3m')
+    if 'perf_1m' in out.columns:
+        gate = 1.0 / (1.0 + np.exp(-50 * out['perf_1m']))
+        out['momentum_accel'] = raw_accel * gate
+    else:
+        out['momentum_accel'] = 0.0
 
     # ── MACD histogram ──
     out['macd_histogram'] = _safe_column_diff(out, 'macd_level', 'macd_signal')
@@ -52,11 +60,15 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
         out['above_sma200'] = np.nan
         out['golden_cross'] = np.nan
 
-    # ── Liquidity proxy: avg daily traded value ──
+    # ── Liquidity proxy: log avg daily traded value ──
+    # Log-transform tames the right-skew (ADTV ranges from $1M to $10B+)
+    # and makes z-scores more meaningful across the distribution.
     if 'avg_vol_30d' in out.columns and 'price' in out.columns:
-        out['adtv'] = out['avg_vol_30d'] * out['price']
+        raw_adtv = out['avg_vol_30d'] * out['price']
+        out['adtv'] = np.log1p(raw_adtv.clip(lower=0))  # log(1+x), safe for 0
     elif 'volume' in out.columns and 'price' in out.columns:
-        out['adtv'] = out['volume'] * out['price']
+        raw_adtv = out['volume'] * out['price']
+        out['adtv'] = np.log1p(raw_adtv.clip(lower=0))
     else:
         out['adtv'] = np.nan
 
@@ -122,15 +134,22 @@ def compute_sector_aggregates(stock_df: pd.DataFrame) -> pd.DataFrame:
     # ── Core aggregates ──
     agg['median_momentum']        = _agg_col('perf_1m', 'median', 0.0)
     agg['breadth']                = _agg_col('positive_1m', 'mean', 0.5)
-    agg['avg_volatility']         = _agg_col(
-        'volatility_d', 'median',
-        _agg_col('atr_14', 'median', 0.0)
-    )
-    agg['liquidity_score']        = _agg_col('adtv', 'median', 0.0)
+    # ── Volatility: use % vol, normalize ATR by price for unit consistency ──
+    if 'volatility_d' in df.columns:
+        agg['avg_volatility'] = grouped['volatility_d'].median()
+    elif 'atr_14' in df.columns and 'price' in df.columns:
+        # ATR is in price units; normalize to % to match volatility_d scale
+        df = df.copy()
+        df['_atr_pct'] = df['atr_14'] / df['price'] * 100
+        agg['avg_volatility'] = df.groupby('sector')['_atr_pct'].median()
+    else:
+        agg['avg_volatility'] = np.nan  # NaN → z-score ignores, no bias
+
+    agg['liquidity_score']        = _agg_col('adtv', 'median', np.nan)  # NaN, not 0.0
     agg['avg_recommendation']     = _agg_col('recommendation', 'mean', np.nan)
     agg['momentum_acceleration']  = _agg_col('momentum_accel', 'median', 0.0)
-    agg['median_rsi']             = _agg_col('rsi_14', 'median', 50.0)
-    agg['pct_golden_cross']       = _agg_col('golden_cross', 'mean', 0.5)
+    agg['median_rsi']             = _agg_col('rsi_14', 'median', 50.0)  # diagnostic only (not in FEATURE_MAP)
+    agg['pct_golden_cross']       = _agg_col('golden_cross', 'mean', 0.5)  # diagnostic only (not in FEATURE_MAP)
 
     # ── Concentration: top-3 market cap share ──
     if 'market_cap' in df.columns:

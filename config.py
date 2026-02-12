@@ -11,25 +11,28 @@ import os
 # ──────────────────────────────────────────────
 WEIGHT_PRESETS = {
     "Momentum-Heavy": {
-        "momentum":     0.40,
-        "breadth":      0.20,
-        "volatility":   0.15,   # applied as negative (lower is better)
-        "liquidity":    0.10,
-        "acceleration": 0.15,
+        "momentum":      0.35,
+        "breadth":       0.20,
+        "volatility":    0.15,   # applied as negative (lower is better)
+        "liquidity":     0.10,
+        "acceleration":  0.15,
+        "concentration": 0.05,   # applied as negative (lower = broader rally)
     },
     "Risk-Aware": {
-        "momentum":     0.20,
-        "breadth":      0.20,
-        "volatility":   0.30,   # higher weight on low-vol
-        "liquidity":    0.15,
-        "acceleration": 0.15,
+        "momentum":      0.15,
+        "breadth":       0.20,
+        "volatility":    0.25,   # higher weight on low-vol
+        "liquidity":     0.15,
+        "acceleration":  0.15,
+        "concentration": 0.10,   # broader rally matters for risk
     },
     "Equal-Weight": {
-        "momentum":     0.20,
-        "breadth":      0.20,
-        "volatility":   0.20,
-        "liquidity":    0.20,
-        "acceleration": 0.20,
+        "momentum":      0.17,
+        "breadth":       0.17,
+        "volatility":    0.17,
+        "liquidity":     0.17,
+        "acceleration":  0.16,
+        "concentration": 0.16,
     },
 }
 

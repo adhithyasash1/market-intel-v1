@@ -271,6 +271,9 @@ def fetch_sector_etf_history(
     Download daily Close prices for sector ETFs + benchmark from yfinance.
     Returns a DataFrame with columns = tickers, index = dates.
     Caches result as Parquet (refreshed if >18 hours old).
+
+    Also caches Volume data alongside prices (etf_volume.parquet) for
+    use by the backtest engine's ADTV computation.
     """
     import yfinance as yf
 
@@ -306,20 +309,36 @@ def fetch_sector_etf_history(
             return pd.read_parquet(cache_file)
         raise RuntimeError(f"Failed to download ETF data and no cache exists: {e}") from e
 
-    # Extract Close prices
+    # Extract Close prices and Volume
     if isinstance(data.columns, pd.MultiIndex):
         prices = data['Close']
+        volume = data['Volume'] if 'Volume' in data.columns.get_level_values(0) else pd.DataFrame()
     else:
         prices = data[['Close']].rename(columns={'Close': tickers[0]})
+        volume = data[['Volume']].rename(columns={'Volume': tickers[0]}) if 'Volume' in data.columns else pd.DataFrame()
 
     prices = prices.dropna(how='all')
 
     if prices.empty:
         raise RuntimeError("yfinance returned empty price data — check ticker symbols.")
 
-    # Cache
+    # Cache prices
     prices.to_parquet(cache_file)
+
+    # Cache volume alongside prices
+    if not volume.empty:
+        vol_cache = os.path.join(ETF_CACHE_DIR, "etf_volume.parquet")
+        volume.dropna(how='all').to_parquet(vol_cache)
+
     return prices
+
+
+def load_etf_volume() -> Optional[pd.DataFrame]:
+    """Load cached ETF volume data, or None if not available."""
+    vol_cache = os.path.join(ETF_CACHE_DIR, "etf_volume.parquet")
+    if os.path.exists(vol_cache):
+        return pd.read_parquet(vol_cache)
+    return None
 
 
 def fetch_single_ticker_history(ticker: str, period: str = "1y") -> pd.DataFrame:
