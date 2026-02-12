@@ -398,7 +398,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📋 Quick Actions")
 
-    refresh_data = st.button("🔄 Refresh Screener Data", use_container_width=True)
+    refresh_data = st.button("🔄 Refresh Screener Data", width="stretch")
 
     st.markdown("---")
     st.caption("Built with tvscreener + yfinance")
@@ -554,7 +554,7 @@ with tab_ranking:
             height=max(400, len(display_df) * 35),
             xaxis=dict(gridcolor='rgba(255,255,255,0.04)', zerolinecolor='rgba(255,255,255,0.08)'),
         ))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_table:
         def style_signal(val):
@@ -572,7 +572,7 @@ with tab_ranking:
             'Momentum Accel.': '{:.2f}',
         }, na_rep="—").map(style_signal, subset=['Signal'])
 
-        st.dataframe(styled, use_container_width=True, height=max(400, len(table_df) * 35 + 40))
+        st.dataframe(styled, width="stretch", height=max(400, len(table_df) * 35 + 40))
 
     # ── Signal Explanations ──
     st.markdown('<div class="section-header">🔎 Signal Explanations</div>', unsafe_allow_html=True)
@@ -610,7 +610,7 @@ with tab_ranking:
                 margin=dict(l=10, r=10, t=35, b=10),
                 font=dict(color='#9aa3b2', size=11),
             ))
-            st.plotly_chart(fig_z, use_container_width=True)
+            st.plotly_chart(fig_z, width="stretch")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -654,7 +654,7 @@ with tab_drilldown:
                     top5 = sector_stocks.nlargest(5, 'perf_1m')
                     st.dataframe(
                         top5[movers_cols].rename(columns=movers_rename),
-                        use_container_width=True, hide_index=True,
+                        width="stretch", hide_index=True,
                     )
 
             with bottom_col:
@@ -663,7 +663,7 @@ with tab_drilldown:
                     bottom5 = sector_stocks.nsmallest(5, 'perf_1m')
                     st.dataframe(
                         bottom5[movers_cols].rename(columns=movers_rename),
-                        use_container_width=True, hide_index=True,
+                        width="stretch", hide_index=True,
                     )
 
             # ── Constituents Table ──
@@ -679,7 +679,7 @@ with tab_drilldown:
                         'perf_1m': '1M %', 'perf_3m': '3M %',
                         'rsi_14': 'RSI', 'market_cap': 'Mkt Cap', 'volume': 'Volume',
                     }),
-                    use_container_width=True, hide_index=True, height=400,
+                    width="stretch", hide_index=True, height=400,
                 )
 
             # ── RSI Distribution ──
@@ -694,7 +694,7 @@ with tab_drilldown:
                     fig_rsi.add_vline(x=30, line_dash="dash", line_color=CHART_COLORS['negative'], annotation_text="Oversold")
                     fig_rsi.add_vline(x=70, line_dash="dash", line_color="#00c853", annotation_text="Overbought")
                     fig_rsi.update_layout(**_get_plotly_dark_layout(height=300))
-                    st.plotly_chart(fig_rsi, use_container_width=True)
+                    st.plotly_chart(fig_rsi, width="stretch")
 
     # ── Cross-Sector Correlation Heatmap ──
     st.markdown('<div class="section-header">🔥 Cross-Sector Correlation</div>', unsafe_allow_html=True)
@@ -722,7 +722,7 @@ with tab_drilldown:
                     height=500,
                     margin=dict(l=10, r=10, t=50, b=10),
                 ))
-                st.plotly_chart(fig_corr, use_container_width=True)
+                st.plotly_chart(fig_corr, width="stretch")
         except Exception as e:
             st.warning(f"Could not render correlation heatmap: {e}")
     else:
@@ -812,7 +812,7 @@ with tab_backtest:
                     height=420,
                     legend=dict(x=0.02, y=0.98, bgcolor='rgba(20,22,34,0.80)'),
                 ))
-                st.plotly_chart(fig_bt, use_container_width=True)
+                st.plotly_chart(fig_bt, width="stretch")
 
                 # ── Bootstrap Test ──
                 with st.expander("📊 Bootstrap Significance Test (1000 samples)"):
@@ -851,7 +851,7 @@ with tab_backtest:
                                     'alpha': '{:.2f}%',
                                     'information_ratio': '{:.3f}',
                                 }),
-                                use_container_width=True, hide_index=True,
+                                width="stretch", hide_index=True,
                             )
                     except Exception as e:
                         st.warning(f"Sensitivity analysis failed: {e}")
@@ -949,7 +949,7 @@ with tab_scenario:
             yaxis=dict(autorange="reversed"),
             height=max(300, len(compare_df) * 30),
         ))
-        st.plotly_chart(fig_scenario, use_container_width=True)
+        st.plotly_chart(fig_scenario, width="stretch")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -969,7 +969,7 @@ with tab_export:
             data=csv_data,
             file_name="sector_rankings.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
 
         st.markdown("### 📋 Download Full Snapshot CSV")
@@ -979,7 +979,7 @@ with tab_export:
             data=snap_csv,
             file_name="stock_snapshot.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
 
     with export_col2:
@@ -1046,7 +1046,7 @@ with tab_export:
             data=memo,
             file_name=f"sector_memo_{today}.md",
             mime="text/markdown",
-            use_container_width=True,
+            width="stretch",
         )
 
 
