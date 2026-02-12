@@ -451,7 +451,7 @@ def _build_run_metadata(weights, freq, cost, tilt, n_over, n_under):
     s = json.dumps(params, sort_keys=True)
     return {
         'run_params': params,
-        'config_hash': hashlib.md5(s.encode()).hexdigest()[:8]
+        'config_hash': hashlib.md5(s.encode(), usedforsecurity=False).hexdigest()[:8]
     }
 
 # ─── Bootstrap Significance Testing ─────────────────────────────
