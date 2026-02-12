@@ -6,6 +6,7 @@ caches as Parquet, and downloads sector ETF history via yfinance.
 """
 
 import os
+import tempfile
 import logging
 import pandas as pd
 import numpy as np
@@ -104,6 +105,12 @@ def fetch_screener_snapshot(max_results: int = 1000) -> pd.DataFrame:
     Returns a DataFrame with key fields for S&P 500 stocks.
 
     Raises RuntimeError if the API call fails after logging the error.
+
+    Note
+    ----
+    Timestamps (snapshot_date, snapshot_ts) use ``datetime.now()`` which
+    returns timezone-naive local time.  All downstream code should treat
+    snapshot timestamps as timezone-naive or convert explicitly.
     """
     from tvscreener import StockScreener, StockField, IndexSymbol
 
@@ -162,7 +169,13 @@ def fetch_screener_snapshot(max_results: int = 1000) -> pd.DataFrame:
 
     df = _standardize_columns(df)
 
-    # Add snapshot metadata
+    # Fail-fast if critical columns are missing after mapping
+    _required = {'sector', 'price', 'volume'}
+    _missing = _required - set(df.columns)
+    if _missing:
+        logger.warning("Column mapping missed required columns: %s", _missing)
+
+    # Add snapshot metadata (timezone-naive local time)
     now = datetime.now()
     df['snapshot_date'] = now.strftime("%Y-%m-%d")
     df['snapshot_ts'] = now.isoformat()
@@ -173,13 +186,22 @@ def fetch_screener_snapshot(max_results: int = 1000) -> pd.DataFrame:
 # ─── Snapshot Caching ────────────────────────────────────────────
 
 def save_snapshot(df: pd.DataFrame, date_str: Optional[str] = None) -> str:
-    """Save a snapshot DataFrame to Parquet, partitioned by date."""
+    """Save a snapshot DataFrame to Parquet via atomic write (tmp + rename)."""
     ensure_dirs()
     if date_str is None:
         date_str = datetime.now().strftime("%Y-%m-%d")
 
     path = os.path.join(SNAPSHOT_DIR, f"snapshot_{date_str}.parquet")
-    df.to_parquet(path, index=False)
+    # Atomic write: write to temp file then rename to prevent corruption
+    fd, tmp_path = tempfile.mkstemp(suffix='.parquet', dir=SNAPSHOT_DIR)
+    try:
+        os.close(fd)
+        df.to_parquet(tmp_path, index=False)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
     logger.info("Saved snapshot to %s (%d rows)", path, len(df))
     return path
 

@@ -135,6 +135,12 @@ def run_backtest(
     if weights is None:
         weights = WEIGHT_PRESETS[DEFAULT_PRESET]
 
+    # Validate input
+    if not isinstance(etf_prices.index, pd.DatetimeIndex):
+        raise TypeError(
+            f"etf_prices must have a DatetimeIndex, got {type(etf_prices.index).__name__}"
+        )
+
     etf_cols = [c for c in etf_prices.columns if c != BENCHMARK_ETF]
     if not etf_cols:
         logger.warning("No ETF columns found (excluding benchmark).")
@@ -151,8 +157,9 @@ def run_backtest(
     freq_code = 'MS' if rebalance_freq == "Monthly" else 'QS'
     rebal_dates = daily_returns.resample(freq_code).first().index.tolist()
 
-    # Skip warmup period
-    warmup_end = daily_returns.index[WARMUP_DAYS]
+    # Skip warmup period — use .iloc to avoid IndexError on short data
+    warmup_idx = min(WARMUP_DAYS, len(daily_returns) - 1)
+    warmup_end = daily_returns.index[warmup_idx]
     valid_dates = [d for d in rebal_dates if d >= warmup_end]
 
     if len(valid_dates) < 2:
@@ -167,6 +174,7 @@ def run_backtest(
     daily_records: List[Tuple[pd.Timestamp, float, float]] = []
     weight_log = []
     prev_weights = pd.Series(equal_weight, index=etf_cols)
+    # Convert basis points to fraction: 10 bps → 0.001 (0.10%)
     cost_rate = transaction_cost_bps / 10_000.0
 
     for i, date in enumerate(valid_dates):
@@ -196,9 +204,14 @@ def run_backtest(
         turnover = (target_weights - prev_weights).abs().sum()
         cost = turnover * cost_rate
 
-        # Period boundaries — from this rebalance to the next (exclusive)
+        # Period boundaries — from this rebalance to the next (exclusive).
+        # Since scoring used data *before* date, we include date itself in
+        # returns (the decision was made at open, returns are close-to-close).
         period_end = valid_dates[i + 1] if i + 1 < len(valid_dates) else daily_returns.index[-1]
         period_rets = daily_returns.loc[date:period_end, etf_cols]
+        # Exclude the next rebalance date itself to prevent double-counting
+        if i + 1 < len(valid_dates) and len(period_rets) > 0:
+            period_rets = period_rets.iloc[:-1] if period_rets.index[-1] == period_end else period_rets
 
         if len(period_rets) == 0:
             continue
@@ -256,14 +269,19 @@ def compute_metrics(
     benchmark_returns: pd.Series,
     risk_free_rate: float = 0.0,
 ) -> Dict[str, float]:
-    """Compute key backtest performance metrics."""
+    """Compute key backtest performance metrics.
+
+    Annualization uses TRADING_DAYS_PER_YEAR (252) based on the number of
+    actual return observations, which is more robust than calendar-day
+    counting for data with gaps or sparse trading.
+    """
     if len(portfolio_returns) < MIN_BACKTEST_DAYS:
         return {}
 
-    total_days = (portfolio_returns.index[-1] - portfolio_returns.index[0]).days
-    if total_days == 0:
+    n_obs = len(portfolio_returns)
+    years = n_obs / TRADING_DAYS_PER_YEAR
+    if years < 1e-6:
         return {}
-    years = total_days / 365.25
 
     # Cumulative / annualized returns
     cum_ret = (1 + portfolio_returns).prod() - 1
@@ -343,6 +361,11 @@ def bootstrap_test(
     n = len(active_returns)
 
     if n < block_size * 2:
+        return {}
+
+    # Guard: n - block_size must be > 0 for rng.integers to work
+    if n <= block_size:
+        logger.warning("Not enough data for block bootstrap (n=%d, block=%d)", n, block_size)
         return {}
 
     # Use modern numpy RNG for reproducibility

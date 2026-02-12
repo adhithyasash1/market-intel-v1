@@ -62,8 +62,10 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── RSI zone ──
     if 'rsi_14' in out.columns:
+        # Clip to [0, 100] so out-of-range values don't produce NaN bins
+        rsi_clipped = out['rsi_14'].clip(0, 100)
         out['rsi_zone'] = pd.cut(
-            out['rsi_14'],
+            rsi_clipped,
             bins=[0, 30, 45, 55, 70, 100],
             labels=['Oversold', 'Weak', 'Neutral', 'Strong', 'Overbought'],
             include_lowest=True,
@@ -133,7 +135,7 @@ def compute_sector_aggregates(stock_df: pd.DataFrame) -> pd.DataFrame:
     # ── Concentration: top-3 market cap share ──
     if 'market_cap' in df.columns:
         agg['concentration'] = df.groupby('sector').apply(
-            _sector_concentration
+            _sector_concentration, include_groups=False
         )
     else:
         agg['concentration'] = 0.5

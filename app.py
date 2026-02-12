@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 import os
 import sys
 import logging
+import html as html_mod
+import textwrap
 
 # ── Path setup ──
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +32,12 @@ from src.utils import format_pct, format_large_number
 
 logger = logging.getLogger(__name__)
 
+# Configure root logger so all modules' log messages are emitted
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
 
 # ══════════════════════════════════════════════════════════════════
 # HELPERS
@@ -39,7 +47,13 @@ def render_metric_card(label: str, value: str, delta: str = "", delta_type: str 
     """
     Generate HTML for a premium metric card.
     Consolidates repeated card markup into a single helper (DRY).
+    HTML-escapes inputs to prevent XSS from untrusted data.
     """
+    # Escape all dynamic content to prevent XSS
+    label = html_mod.escape(str(label))
+    value = html_mod.escape(str(value))
+    delta = html_mod.escape(str(delta)) if delta else ""
+
     delta_html = ""
     if delta:
         delta_class = f"delta-{delta_type}" if delta_type else "delta"
@@ -350,7 +364,7 @@ st.markdown("""
 # ══════════════════════════════════════════════════════════════════
 n_overweight = len(scored_sectors[scored_sectors['signal'] == 'Overweight'])
 n_avoid = len(scored_sectors[scored_sectors['signal'] == 'Avoid'])
-top_sector = scored_sectors.index[0]
+top_sector = textwrap.shorten(scored_sectors.index[0], width=18, placeholder="…")
 top_score = scored_sectors['composite_score'].iloc[0]
 
 cols = st.columns(5)
@@ -358,7 +372,7 @@ kpi_data = [
     ("SECTORS ANALYZED", str(len(scored_sectors)), "", ""),
     ("OVERWEIGHT", str(n_overweight), "", "positive"),
     ("AVOID", str(n_avoid), "", "negative"),
-    ("TOP SECTOR", top_sector.split()[-1] if len(top_sector) < 25 else top_sector[:20], "", ""),
+    ("TOP SECTOR", top_sector, "", ""),
     ("TOP SCORE", f"{top_score:.3f}", "", "positive" if top_score > 0 else "negative"),
 ]
 
