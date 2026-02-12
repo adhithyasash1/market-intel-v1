@@ -6,7 +6,6 @@ A decision-ready Streamlit dashboard for sector rotation analysis.
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import os
@@ -20,16 +19,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 from config import (
-    WEIGHT_PRESETS, DEFAULT_PRESET, SIGNAL_COLORS,
+    WEIGHT_PRESETS, DEFAULT_PRESET,
     SECTOR_ETFS, BENCHMARK_ETF, DEFAULT_TRANSACTION_COST,
-    DEFAULT_REBALANCE_FREQ, REPORTS_DIR,
     BREADTH_FILTER, MIN_SCORE_MAGNITUDE,
-)
-from src.data_engine import load_or_fetch_snapshot, fetch_sector_etf_history
-from src.features import compute_stock_features, compute_sector_aggregates
-from src.scorer import score_pipeline, FEATURE_MAP
-from src.backtest import run_backtest, bootstrap_test, sensitivity_analysis
-from src.utils import format_pct, format_large_number
+)  # noqa: E402
+from src.data_engine import load_or_fetch_snapshot, fetch_sector_etf_history  # noqa: E402
+from src.features import compute_stock_features, compute_sector_aggregates  # noqa: E402
+from src.scorer import score_pipeline  # noqa: E402
+from src.backtest import run_backtest, bootstrap_test, sensitivity_analysis  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +121,6 @@ st.set_page_config(
 # Institutional dark-theme CSS
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
     /* ── Global ── */
     .stApp {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -559,10 +554,13 @@ with tab_ranking:
     with col_table:
         def style_signal(val):
             if val == "Overweight":
-                return 'background: rgba(0,200,83,0.12); color: #00c853; font-weight: 600; border-radius: 100px; text-align: center; border-left: 3px solid #00c853;'
+                return ('background: rgba(0,200,83,0.12); color: #00c853; font-weight: 600; '
+                        'border-radius: 100px; text-align: center; border-left: 3px solid #00c853;')
             elif val == "Avoid":
-                return 'background: rgba(255,77,79,0.12); color: #ff4d4f; font-weight: 600; border-radius: 100px; text-align: center; border-left: 3px solid #ff4d4f;'
-            return 'background: rgba(255,152,0,0.10); color: #ff9800; font-weight: 600; border-radius: 100px; text-align: center; border-left: 3px solid #ff9800;'
+                return ('background: rgba(255,77,79,0.12); color: #ff4d4f; font-weight: 600; '
+                        'border-radius: 100px; text-align: center; border-left: 3px solid #ff4d4f;')
+            return ('background: rgba(255,152,0,0.10); color: #ff9800; font-weight: 600; '
+                    'border-radius: 100px; text-align: center; border-left: 3px solid #ff9800;')
 
         styled = table_df.style.format({
             'Score': '{:.3f}',
@@ -633,10 +631,12 @@ with tab_drilldown:
                 med_mom = sector_stocks['perf_1m'].median() if 'perf_1m' in sector_stocks.columns else 0
                 st.metric("Median 1M Return", f"{med_mom:.1f}%")
             with col3:
-                breadth_val = scored_sectors.loc[selected_sector, 'breadth'] if selected_sector in scored_sectors.index else 0
+                breadth_val = (scored_sectors.loc[selected_sector, 'breadth']
+                               if selected_sector in scored_sectors.index else 0)
                 st.metric("Breadth", f"{breadth_val:.0%}")
             with col4:
-                signal = scored_sectors.loc[selected_sector, 'signal'] if selected_sector in scored_sectors.index else "N/A"
+                signal = (scored_sectors.loc[selected_sector, 'signal']
+                          if selected_sector in scored_sectors.index else "N/A")
                 st.metric("Signal", signal)
 
             # ── Top Movers ──
@@ -669,7 +669,7 @@ with tab_drilldown:
             # ── Constituents Table ──
             st.markdown("**📋 All Constituents**")
             const_cols = [c for c in ['name', 'price', 'change_pct', 'perf_1m', 'perf_3m',
-                         'rsi_14', 'market_cap', 'volume'] if c in sector_stocks.columns]
+                                      'rsi_14', 'market_cap', 'volume'] if c in sector_stocks.columns]
             if const_cols:
                 sort_col = 'market_cap' if 'market_cap' in sector_stocks.columns else const_cols[0]
                 st.dataframe(
@@ -733,7 +733,10 @@ with tab_drilldown:
 # TAB 3: BACKTEST
 # ══════════════════════════════════════════════════════════════════
 with tab_backtest:
-    st.markdown('<div class="section-header">📈 Strategy Backtest — Sector Tilt Simulation</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-header">📈 Strategy Backtest — Sector Tilt Simulation</div>',
+        unsafe_allow_html=True
+    )
     st.caption("Overweights top-2 scored sectors, underweights bottom-2, uses sector ETF daily returns")
 
     if etf_prices_cached is None:
@@ -905,8 +908,9 @@ with tab_scenario:
             if mom_shock != 0 and 'median_momentum' in scenario_aggs.columns:
                 scenario_aggs.loc[scenario_sector, 'median_momentum'] += mom_shock
             if breadth_shock != 0 and 'breadth' in scenario_aggs.columns:
-                scenario_aggs.loc[scenario_sector, 'breadth'] = max(0, min(1,
-                    scenario_aggs.loc[scenario_sector, 'breadth'] + breadth_shock / 100))
+                scenario_aggs.loc[scenario_sector, 'breadth'] = max(
+                    0, min(1, scenario_aggs.loc[scenario_sector, 'breadth'] + breadth_shock / 100)
+                )
 
         scenario_scored = score_pipeline(scenario_aggs, weights=weights, preset=preset_name)
 
@@ -941,7 +945,10 @@ with tab_scenario:
             y=compare_df.index,
             x=compare_df['Score Change'],
             orientation='h',
-            marker_color=[CHART_COLORS['positive'] if v > 0 else CHART_COLORS['negative'] for v in compare_df['Score Change']],
+            marker_color=[
+                CHART_COLORS['positive'] if v > 0 else CHART_COLORS['negative']
+                for v in compare_df['Score Change']
+            ],
         ))
         fig_scenario.update_layout(**_get_plotly_dark_layout(
             title="Score Change Under Scenario",

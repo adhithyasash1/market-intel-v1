@@ -1,79 +1,69 @@
+
+import logging
 import sys
 import os
 import time
 import pandas as pd
 import numpy as np
-import logging
 
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.backtest import run_backtest, bootstrap_test
-from config import SECTOR_ETFS, BENCHMARK_ETF
+from src.backtest import run_backtest, bootstrap_test  # noqa: E402
+from config import SECTOR_ETFS, BENCHMARK_ETF  # noqa: E402
 
-logging.basicConfig(level=logging.WARNING)
 
-def generate_data(n_days=300):
-    np.random.seed(123)
-    dates = pd.bdate_range('2024-01-01', periods=n_days, freq='B')
+def generate_data(n_days=3000):
+    np.random.seed(42)
+    dates = pd.bdate_range('2015-01-01', periods=n_days, freq='B')
     tickers = SECTOR_ETFS + [BENCHMARK_ETF]
     prices = pd.DataFrame(index=dates, columns=tickers, dtype=float)
     for t in tickers:
-        # Start at 100, random walk with drift
-        returns = np.random.normal(0.0003, 0.015, n_days)
+        returns = np.random.normal(0.0005, 0.012, n_days)
         prices[t] = 100 * np.cumprod(1 + returns)
     return prices
 
-def benchmark_backtest(n_loops=10, n_days=300):
-    prices = generate_data(n_days)
-    print(f"Benchmarking run_backtest over {n_days} days ({n_loops} loops)...")
+
+def benchmark_performance():
+    print("Benchmarking Vectorized Backtest Performance...")
     
-    times = []
+    sizes = [300, 1000, 3000, 5000]
     results = []
-    
-    # Warmup
-    try:
+
+    for n in sizes:
+        print(f"Generating {n} days of data...")
+        prices = generate_data(n)
+        
+        # Warmup (JIT compilation trigger if using numba, or cache warming)
         run_backtest(prices)
-    except Exception as e:
-        print(f"Warmup failed: {e}")
-        return None
 
-    for i in range(n_loops):
-        start = time.perf_counter()
-        res = run_backtest(prices)
-        end = time.perf_counter()
-        times.append(end - start)
-        results.append(res)
+        start = time.time()
+        for _ in range(5):
+            run_backtest(prices)
+        end = time.time()
+        avg_time = (end - start) / 5.0
+        print(f"  N={n}: {avg_time*1000:.2f} ms")
         
-    avg = np.mean(times)
-    std = np.std(times)
-    print(f"  Avg: {avg:.4f}s ± {std:.4f}s")
-    return results[0]
+        # Benchmark bootstrap
+        # Only run for larger sizes to see impact
+        boot_time = 0.0
+        if n >= 1000:
+            res = run_backtest(prices)
+            start_b = time.time()
+            bootstrap_test(res.portfolio_returns, res.benchmark_returns, n_samples=100)
+            end_b = time.time()
+            boot_time = (end_b - start_b)
+            print(f"  Bootstrap(N={n}, S=100): {boot_time*1000:.2f} ms")
 
-def benchmark_bootstrap(result, n_samples=1000, n_loops=10):
-    print(f"Benchmarking bootstrap_test ({n_samples} samples, {n_loops} loops)...")
-    
-    port_ret = result.portfolio_returns
-    bench_ret = result.benchmark_returns
-    
-    times = []
-    
-    # Warmup
-    bootstrap_test(port_ret, bench_ret, n_samples=10)
-    
-    for i in range(n_loops):
-        start = time.perf_counter()
-        bootstrap_test(port_ret, bench_ret, n_samples=n_samples)
-        end = time.perf_counter()
-        times.append(end - start)
-        
-    avg = np.mean(times)
-    std = np.std(times)
-    print(f"  Avg: {avg:.4f}s ± {std:.4f}s")
+        results.append({
+            'rows': n,
+            'backtest_ms': avg_time * 1000,
+            'bootstrap_ms': boot_time * 1000
+        })
+
+    print("\nSummary:")
+    print(pd.DataFrame(results))
+
 
 if __name__ == "__main__":
-    res = benchmark_backtest(n_loops=10, n_days=300)
-    if res and not res.portfolio_returns.empty:
-        benchmark_bootstrap(res, n_samples=1000, n_loops=10)
-    else:
-        print("Backtest failed or produced no results.")
+    benchmark_performance()

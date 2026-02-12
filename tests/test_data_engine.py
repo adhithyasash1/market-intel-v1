@@ -2,11 +2,9 @@
 Tests for src/data_engine.py — column mapping, caching, ETF price handling.
 """
 import os
-import tempfile
 import pandas as pd
-import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.data_engine import (
     _standardize_columns, save_snapshot, load_snapshot,

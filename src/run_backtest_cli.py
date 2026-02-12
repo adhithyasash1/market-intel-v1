@@ -8,12 +8,13 @@ from datetime import datetime
 # Ensure project root is in path
 sys.path.insert(0, os.getcwd())
 
-from src.backtest import run_backtest, BacktestResult
-from src.data_engine import fetch_sector_etf_history, load_or_fetch_snapshot
-from config import SECTOR_ETFS, BENCHMARK_ETF
+from src.backtest import run_backtest  # noqa: E402
+from src.data_engine import fetch_sector_etf_history  # noqa: E402
+from config import SECTOR_ETFS, BENCHMARK_ETF  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run backtest from CLI")
@@ -34,7 +35,7 @@ def main():
             prices = pd.DataFrame(index=dates, columns=tickers, dtype=float)
             for t in tickers:
                 prices[t] = 100 * np.cumprod(1 + np.random.normal(0.0005, 0.015, args.days))
-            
+
             res = run_backtest(prices)
             logger.info("Backtest complete. Return: %.2f%%", res.metrics['total_return'])
         else:
@@ -44,13 +45,14 @@ def main():
             res = run_backtest(prices)
             logger.info("Backtest complete. Total Return: %.2f%%", res.metrics['total_return'])
             logger.info("Sharpe Ratio: %.2f", res.metrics['sharpe_ratio'])
-        
+
         # In a real worker, we would save artifacts to S3/GCS here
         logger.info("Worker finished successfully.")
 
     except Exception as e:
         logger.error("Backtest failed: %s", e)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

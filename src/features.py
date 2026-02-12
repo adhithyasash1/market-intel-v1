@@ -7,7 +7,6 @@ from screener snapshots, then aggregates to sector level.
 
 import pandas as pd
 import numpy as np
-from typing import Optional
 
 from config import MIN_SECTOR_STOCKS
 from src.utils import sigmoid_gate
@@ -52,11 +51,11 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── SMA alignment: price vs moving averages ──
     if all(c in out.columns for c in ['price', 'sma_50', 'sma_200']):
-        out['above_sma50']  = (out['price'] > out['sma_50']).astype(int)
+        out['above_sma50'] = (out['price'] > out['sma_50']).astype(int)
         out['above_sma200'] = (out['price'] > out['sma_200']).astype(int)
         out['golden_cross'] = (out['sma_50'] > out['sma_200']).astype(int)
     else:
-        out['above_sma50']  = np.nan
+        out['above_sma50'] = np.nan
         out['above_sma200'] = np.nan
         out['golden_cross'] = np.nan
 
@@ -132,8 +131,8 @@ def compute_sector_aggregates(stock_df: pd.DataFrame) -> pd.DataFrame:
         return default
 
     # ── Core aggregates ──
-    agg['median_momentum']        = _agg_col('perf_1m', 'median', 0.0)
-    agg['breadth']                = _agg_col('positive_1m', 'mean', 0.5)
+    agg['median_momentum'] = _agg_col('perf_1m', 'median', 0.0)
+    agg['breadth'] = _agg_col('positive_1m', 'mean', 0.5)
     # ── Volatility: use % vol, normalize ATR by price for unit consistency ──
     if 'volatility_d' in df.columns:
         agg['avg_volatility'] = grouped['volatility_d'].median()
@@ -145,11 +144,11 @@ def compute_sector_aggregates(stock_df: pd.DataFrame) -> pd.DataFrame:
     else:
         agg['avg_volatility'] = np.nan  # NaN → z-score ignores, no bias
 
-    agg['liquidity_score']        = _agg_col('adtv', 'median', np.nan)  # NaN, not 0.0
-    agg['avg_recommendation']     = _agg_col('recommendation', 'mean', np.nan)
-    agg['momentum_acceleration']  = _agg_col('momentum_accel', 'median', 0.0)
-    agg['median_rsi']             = _agg_col('rsi_14', 'median', 50.0)  # diagnostic only (not in FEATURE_MAP)
-    agg['pct_golden_cross']       = _agg_col('golden_cross', 'mean', 0.5)  # diagnostic only (not in FEATURE_MAP)
+    agg['liquidity_score'] = _agg_col('adtv', 'median', np.nan)  # NaN, not 0.0
+    agg['avg_recommendation'] = _agg_col('recommendation', 'mean', np.nan)
+    agg['momentum_acceleration'] = _agg_col('momentum_accel', 'median', 0.0)
+    agg['median_rsi'] = _agg_col('rsi_14', 'median', 50.0)  # diagnostic only (not in FEATURE_MAP)
+    agg['pct_golden_cross'] = _agg_col('golden_cross', 'mean', 0.5)  # diagnostic only (not in FEATURE_MAP)
 
     # ── Concentration: top-3 market cap share ──
     if 'market_cap' in df.columns:

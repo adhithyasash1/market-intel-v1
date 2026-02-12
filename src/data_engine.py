@@ -9,7 +9,6 @@ import os
 import tempfile
 import logging
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 from typing import Optional, List
 
@@ -39,8 +38,8 @@ _COLUMN_MAP = {
     'Relative Strength Index':  'rsi_14',
     'MACD Level':               'macd_level',
     'MACD Signal':              'macd_signal',
-    'Simple Moving Average (50':'sma_50',
-    'Simple Moving Average (200':'sma_200',
+    'Simple Moving Average (50': 'sma_50',
+    'Simple Moving Average (200': 'sma_200',
     'Average True Range':       'atr_14',
     'Weekly Perf':              'perf_1w',
     'Monthly Perf':             'perf_1m',

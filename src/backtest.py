@@ -187,7 +187,8 @@ def _build_run_metadata(
 
     Stored in BacktestResult.metrics so any historical run can be audited.
     """
-    import hashlib, json
+    import hashlib
+    import json
     params = {
         'weights': {k: round(v, 6) for k, v in sorted(weights.items())},
         'rebalance_freq': rebalance_freq,
@@ -261,7 +262,15 @@ def run_backtest(
         logger.warning("No ETF columns found (excluding benchmark).")
         return _empty_result()
 
-    prices = etf_prices[etf_cols + [BENCHMARK_ETF]].dropna(how='all').copy()
+    # Deduplicate input columns robustly
+    etf_prices = etf_prices.loc[:, ~etf_prices.columns.duplicated()]
+    
+    # Deduplicate columns to prevent Series ambiguity if benchmark is passed twice
+    cols_to_use = list(dict.fromkeys(etf_cols + [BENCHMARK_ETF]))
+    # Filter only available columns
+    cols_to_use = [c for c in cols_to_use if c in etf_prices.columns]
+    
+    prices = etf_prices[cols_to_use].dropna(how='all').copy()
     daily_returns = prices.pct_change().dropna(how='all')
 
     if len(daily_returns) < WARMUP_DAYS + MIN_BACKTEST_DAYS:
@@ -377,16 +386,16 @@ def run_backtest(
         # Unnormalized weights: w0 * growth
         w0_arr = target_weights.values  # (N,)
         w_unnorm = w0_arr * shift_growth  # (T, N) via broadcasting
-        
+
         # Normalize by row sums to get actual drift-adjusted weights
         row_sums = w_unnorm.sum(axis=1, keepdims=True)
         # Avoid division by zero
         row_sums[row_sums == 0] = 1.0
         w_norm = w_unnorm / row_sums
-        
+
         # Portfolio returns: sum(w_{t-1} * r_t)
         port_rets_arr = (w_norm * rets_arr).sum(axis=1)
-        
+
         # Apply transaction cost to first day of rebalance period
         if cost > 0:
             # R_net = (1 + R_gross) * (1 - cost) - 1
@@ -399,7 +408,7 @@ def run_backtest(
         if w_end_sum > 0:
             w_end_norm = w_end_unnorm / w_end_sum
         else:
-            w_end_norm = w0_arr # Fallback
+            w_end_norm = w0_arr  # Fallback
 
         # Benchmark returns
         days = period_rets.index

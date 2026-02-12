@@ -7,11 +7,10 @@ import pytest
 
 from src.backtest import (
     run_backtest, compute_metrics, bootstrap_test,
-    _compute_etf_features, BacktestResult, _empty_result,
+    _compute_etf_features, BacktestResult,
 )
 from config import (
-    WEIGHT_PRESETS, DEFAULT_PRESET, WARMUP_DAYS,
-    TRADING_DAYS_PER_YEAR, MIN_BACKTEST_DAYS,
+    WARMUP_DAYS, MIN_BACKTEST_DAYS,
 )
 
 

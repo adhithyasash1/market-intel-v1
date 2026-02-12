@@ -14,7 +14,7 @@ from config import (
     WEIGHT_PRESETS, DEFAULT_PRESET, OVERWEIGHT_PERCENTILE, AVOID_PERCENTILE,
     FEATURE_MAP, FEATURE_LABELS,
 )
-from src.utils import safe_zscore, robust_zscore
+from src.utils import robust_zscore
 
 # Alias for internal use (keeps downstream code unchanged)
 _FEATURE_LABELS = FEATURE_LABELS
@@ -194,11 +194,11 @@ def contribution_breakdown(
 # ─── Human-readable unit formatters for raw values ───────────────
 
 _RAW_FORMATTERS = {
-    "momentum":      lambda v: f"{v:+.1f}%" if not np.isnan(v) else "n/a",
-    "breadth":       lambda v: f"{v:.0%}" if not np.isnan(v) else "n/a",
-    "volatility":    lambda v: f"{v:.1f}%" if not np.isnan(v) else "n/a",
-    "liquidity":     lambda v: f"log₁ₚ={v:.1f}" if not np.isnan(v) else "n/a",
-    "acceleration":  lambda v: f"{v:+.2f}" if not np.isnan(v) else "n/a",
+    "momentum": lambda v: f"{v:+.1f}%" if not np.isnan(v) else "n/a",
+    "breadth": lambda v: f"{v:.0%}" if not np.isnan(v) else "n/a",
+    "volatility": lambda v: f"{v:.1f}%" if not np.isnan(v) else "n/a",
+    "liquidity": lambda v: f"log₁ₚ={v:.1f}" if not np.isnan(v) else "n/a",
+    "acceleration": lambda v: f"{v:+.2f}" if not np.isnan(v) else "n/a",
     "concentration": lambda v: f"{v:.0%}" if not np.isnan(v) else "n/a",
 }
 

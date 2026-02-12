@@ -3,7 +3,6 @@ Tests for src/utils.py — safe_zscore, format_pct, format_large_number.
 """
 import pandas as pd
 import numpy as np
-import pytest
 from src.utils import safe_zscore, format_pct, format_large_number, winsorize, robust_zscore
 
 

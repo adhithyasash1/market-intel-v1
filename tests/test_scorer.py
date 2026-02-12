@@ -2,7 +2,6 @@
 Tests for src/scorer.py — z-scores, weighted scoring, signal assignment.
 """
 import pandas as pd
-import numpy as np
 import pytest
 
 from src.scorer import (
@@ -132,11 +131,11 @@ class TestExplainSignal:
         row = scored.iloc[0]
 
         exp_mom = explain_signal(row, weights={'momentum': 1.0, 'breadth': 0.0,
-                                                'volatility': 0.0, 'liquidity': 0.0,
-                                                'acceleration': 0.0})
+                                               'volatility': 0.0, 'liquidity': 0.0,
+                                               'acceleration': 0.0})
         exp_vol = explain_signal(row, weights={'momentum': 0.0, 'breadth': 0.0,
-                                                'volatility': 1.0, 'liquidity': 0.0,
-                                                'acceleration': 0.0})
+                                               'volatility': 1.0, 'liquidity': 0.0,
+                                               'acceleration': 0.0})
         # Top contributor should differ
         assert exp_mom[0] != exp_vol[0]
 
