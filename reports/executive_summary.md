@@ -11,7 +11,7 @@ Identify which equity sectors to **overweight**, **hold neutral**, or **avoid** 
 
 ## Methodology
 
-Each sector receives a **Composite Score** built from five normalized features:
+Each sector receives a **Composite Score** built from six normalized features:
 
 | Feature | Description | Polarity |
 |---------|------------|----------|
@@ -20,6 +20,7 @@ Each sector receives a **Composite Score** built from five normalized features:
 | Volatility | Median daily volatility | Lower = better |
 | Liquidity | Median daily traded value | Higher = better |
 | Acceleration | Momentum acceleration (1M − 3M return) | Higher = better |
+| Concentration | Top-3 market cap share within sector | Lower = better |
 
 Features are z-score normalized across sectors. Weighted sum produces the composite score. **Top 20% → Overweight** · **Middle 60% → Neutral** · **Bottom 20% → Avoid**.
 

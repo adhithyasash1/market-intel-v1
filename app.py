@@ -23,6 +23,7 @@ from config import (
     WEIGHT_PRESETS, DEFAULT_PRESET, SIGNAL_COLORS,
     SECTOR_ETFS, BENCHMARK_ETF, DEFAULT_TRANSACTION_COST,
     DEFAULT_REBALANCE_FREQ, REPORTS_DIR,
+    BREADTH_FILTER, MIN_SCORE_MAGNITUDE,
 )
 from src.data_engine import load_or_fetch_snapshot, fetch_sector_etf_history
 from src.features import compute_stock_features, compute_sector_aggregates
@@ -45,41 +46,69 @@ logging.basicConfig(
 
 def render_metric_card(label: str, value: str, delta: str = "", delta_type: str = "") -> str:
     """
-    Generate HTML for a premium metric card.
-    Consolidates repeated card markup into a single helper (DRY).
-    HTML-escapes inputs to prevent XSS from untrusted data.
+    Generate HTML for an institutional metric card.
+    Uses design-token classes. HTML-escapes inputs for XSS safety.
     """
-    # Escape all dynamic content to prevent XSS
     label = html_mod.escape(str(label))
     value = html_mod.escape(str(value))
     delta = html_mod.escape(str(delta)) if delta else ""
 
     delta_html = ""
     if delta:
-        delta_class = f"delta-{delta_type}" if delta_type else "delta"
-        delta_html = f'<div class="delta {delta_class}">{delta}</div>'
+        dt_class = f"mc__delta--{delta_type}" if delta_type else ""
+        delta_html = f'<div class="mc__delta {dt_class}">{delta}</div>'
 
     return f"""
-    <div class="metric-card">
-        <div class="label">{label}</div>
-        <div class="value">{value}</div>
+    <div class="mc">
+        <div class="mc__label">{label}</div>
+        <div class="mc__value">{value}</div>
         {delta_html}
     </div>
     """
 
 
 def _get_plotly_dark_layout(**overrides) -> dict:
-    """Return common Plotly layout kwargs for dark theme. Reduces duplication."""
+    """Institutional Plotly dark theme — single source for all charts."""
     base = dict(
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#ccc', family='Inter'),
-        margin=dict(l=10, r=10, t=50, b=30),
-        xaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
+        font=dict(color='#9aa3b2', family='Inter, -apple-system, sans-serif', size=12),
+        margin=dict(l=16, r=16, t=48, b=32),
+        xaxis=dict(
+            gridcolor='rgba(255,255,255,0.04)',
+            zerolinecolor='rgba(255,255,255,0.08)',
+            tickfont=dict(family='JetBrains Mono, monospace', size=11),
+        ),
+        yaxis=dict(
+            gridcolor='rgba(255,255,255,0.04)',
+            zerolinecolor='rgba(255,255,255,0.08)',
+            tickfont=dict(family='JetBrains Mono, monospace', size=11),
+        ),
+        hoverlabel=dict(
+            bgcolor='#1a1c2e',
+            bordercolor='rgba(0,187,249,0.25)',
+            font=dict(family='Inter', size=12, color='#f0f2f5'),
+        ),
+        legend=dict(
+            bgcolor='rgba(0,0,0,0)',
+            bordercolor='rgba(255,255,255,0.06)',
+            font=dict(size=11, color='#9aa3b2'),
+        ),
     )
     base.update(overrides)
     return base
+
+
+# Chart color palette — consistent across all charts
+CHART_COLORS = {
+    'strategy': '#00bbf9',
+    'benchmark': '#6b7280',
+    'positive': '#00c853',
+    'negative': '#ff4d4f',
+    'neutral': '#ff9800',
+    'accent': '#9b5de5',
+    'area_fill': 'rgba(0,187,249,0.08)',
+}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -92,146 +121,220 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Premium dark-theme CSS
+# Institutional dark-theme CSS
 st.markdown("""
 <style>
-    /* ── Global ── */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+    /* ── Global ── */
     .stApp {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #f0f2f5;
     }
 
     /* ── Header ── */
     .dashboard-header {
-        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-        padding: 2rem 2.5rem;
+        background: #10121a;
+        padding: 1.75rem 2rem;
         border-radius: 16px;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(255,255,255,0.08);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        margin-bottom: 0.75rem;
+        border: 1px solid rgba(255,255,255,0.06);
     }
     .dashboard-header h1 {
-        color: #ffffff;
-        font-size: 2rem;
+        font-size: 1.625rem;
         font-weight: 800;
         margin: 0;
-        letter-spacing: -0.5px;
+        letter-spacing: -0.02em;
         background: linear-gradient(135deg, #00f5d4, #00bbf9, #9b5de5);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
     .dashboard-header p {
-        color: rgba(255,255,255,0.6);
-        font-size: 0.95rem;
-        margin: 0.3rem 0 0 0;
+        color: rgba(240,242,245,0.50);
+        font-size: 0.8125rem;
+        margin: 0.25rem 0 0 0;
         font-weight: 400;
     }
 
     /* ── Metric Cards ── */
-    .metric-card {
-        background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+    .mc {
+        background: #141622;
         border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 14px;
-        padding: 1.3rem 1.5rem;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
         text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        transition: transform 0.15s cubic-bezier(0.16,1,0.3,1),
+                    box-shadow 0.15s cubic-bezier(0.16,1,0.3,1);
     }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+    .mc:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.35);
     }
-    .metric-card .label {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
+    .mc__label {
+        color: rgba(240,242,245,0.40);
+        font-size: 0.6875rem;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.08em;
         font-weight: 600;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.25rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
-    .metric-card .value {
-        color: #ffffff;
-        font-size: 1.8rem;
+    .mc__value {
+        color: #f0f2f5;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.5rem;
         font-weight: 700;
         line-height: 1.2;
+        letter-spacing: -0.02em;
     }
-    .metric-card .delta {
-        font-size: 0.85rem;
+    .mc__delta {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.6875rem;
         margin-top: 0.2rem;
         font-weight: 500;
+        color: #9aa3b2;
     }
-    .delta-positive { color: #00c853; }
-    .delta-negative { color: #ef5350; }
+    .mc__delta--positive { color: #00c853; }
+    .mc__delta--negative { color: #ff4d4f; }
 
-    /* ── Signal Badges ── */
-    .signal-overweight {
-        background: linear-gradient(135deg, #00c853, #00e676);
-        color: #000;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-weight: 700;
-        font-size: 0.8rem;
-        letter-spacing: 0.5px;
-        display: inline-block;
+    /* ── Signal Badges (calm, muted, WCAG-safe) ── */
+    .sig {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 14px 4px 10px;
+        border-radius: 100px;
+        font-weight: 600;
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-left: 3px solid transparent;
     }
-    .signal-neutral {
-        background: linear-gradient(135deg, #ff9800, #ffc107);
-        color: #000;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-weight: 700;
-        font-size: 0.8rem;
-        letter-spacing: 0.5px;
-        display: inline-block;
+    .sig--ow {
+        background: rgba(0,200,83,0.12);
+        color: #00c853;
+        border-left-color: #00c853;
     }
-    .signal-avoid {
-        background: linear-gradient(135deg, #ef5350, #ff1744);
-        color: #fff;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-weight: 700;
-        font-size: 0.8rem;
-        letter-spacing: 0.5px;
-        display: inline-block;
+    .sig--neutral {
+        background: rgba(255,152,0,0.10);
+        color: #ff9800;
+        border-left-color: #ff9800;
+    }
+    .sig--avoid {
+        background: rgba(255,77,79,0.12);
+        color: #ff4d4f;
+        border-left-color: #ff4d4f;
     }
 
     /* ── Section Headers ── */
     .section-header {
-        font-size: 1.1rem;
+        font-size: 1rem;
         font-weight: 700;
-        color: #e0e0e0;
-        padding: 0.8rem 0 0.5rem 0;
-        border-bottom: 2px solid rgba(155, 93, 229, 0.3);
-        margin-bottom: 1rem;
-        letter-spacing: -0.3px;
+        color: #f0f2f5;
+        padding: 0.6rem 0 0.4rem 0;
+        border-bottom: 2px solid rgba(0,187,249,0.20);
+        margin-bottom: 0.875rem;
+        letter-spacing: -0.01em;
     }
 
-    /* ── Table Styling ── */
-    .dataframe-container {
+    /* ── Info Banner ── */
+    .info-banner {
+        background: #141622;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-left: 3px solid #00bbf9;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.8125rem;
+        color: rgba(240,242,245,0.65);
+        margin-bottom: 1rem;
+    }
+    .info-banner strong { color: #f0f2f5; }
+
+    /* ── Tables (mono numerics) ── */
+    .stDataFrame [data-testid="stDataFrameResizable"] {
         border-radius: 12px;
         overflow: hidden;
     }
+    .stDataFrame td {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.8125rem !important;
+    }
+    .stDataFrame th {
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(240,242,245,0.50) !important;
+    }
 
     /* ── Sidebar ── */
-    .css-1d391kg, [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f0c29 0%, #1a1a2e 100%);
+    [data-testid="stSidebar"] {
+        background: #10121a;
+        border-right: 1px solid rgba(255,255,255,0.06);
+    }
+    [data-testid="stSidebar"] .stSelectbox label,
+    [data-testid="stSidebar"] .stSlider label {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: rgba(240,242,245,0.65);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    /* ── Expander ── */
+    /* ── Expanders ── */
     .streamlit-expanderHeader {
         font-weight: 600;
-        font-size: 0.95rem;
+        font-size: 0.875rem;
+        color: #f0f2f5 !important;
     }
 
-    /* ── Tab styling ── */
+    /* ── Tabs ── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 4px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 8px 20px;
+        border-radius: 8px 8px 0 0;
+        padding: 10px 20px;
         font-weight: 600;
+        font-size: 0.8125rem;
+        color: #9aa3b2;
+        transition: color 0.15s ease;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #f0f2f5;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #00bbf9 !important;
+        border-bottom: 2px solid #00bbf9;
+    }
+
+    /* ── Focus Ring (A11y) ── */
+    *:focus-visible {
+        outline: 2px solid rgba(0,245,212,0.50);
+        outline-offset: 2px;
+    }
+
+    /* ── Print / Export ── */
+    @media print {
+        .stSidebar, .stTabs [data-baseweb="tab-list"],
+        button, .stDownloadButton { display: none !important; }
+        .mc { border: 1px solid #ccc; break-inside: avoid; }
+        .stApp { background: #fff !important; color: #000 !important; }
+        .mc__value, .mc__label { color: #000 !important; }
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.12);
+        border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,0.20);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -355,9 +458,13 @@ except Exception as e:
 st.markdown("""
 <div class="dashboard-header">
     <h1>📊 Market Intelligence & Sector Rotation</h1>
-    <p>Decision-ready composite scoring • Explainable signals • Backtested performance</p>
+    <p>Quantitative scoring • Explainable signals • Backtested performance</p>
 </div>
 """, unsafe_allow_html=True)
+
+# ── Data freshness banner ──
+_snapshot_ts = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M %Z")
+st.caption(f"⏱️ Data as of: {_snapshot_ts} — Signals are quantitative inputs, not investment advice.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -373,8 +480,8 @@ kpi_data = [
     ("SECTORS ANALYZED", str(len(scored_sectors)), "", ""),
     ("OVERWEIGHT", str(n_overweight), "", "positive"),
     ("AVOID", str(n_avoid), "", "negative"),
-    ("TOP SECTOR", top_sector, "", ""),
-    ("TOP SCORE", f"{top_score:.3f}", "", "positive" if top_score > 0 else "negative"),
+    ("HIGHEST SCORING", top_sector, "", ""),
+    ("TOP SCORE", f"{top_score:.3f}", "(z-score units)", "positive" if top_score > 0 else "negative"),
 ]
 
 for col, (label, value, delta, delta_type) in zip(cols, kpi_data):
@@ -423,7 +530,12 @@ with tab_ranking:
     col_chart, col_table = st.columns([1, 1.2])
 
     with col_chart:
-        colors = [SIGNAL_COLORS.get(s, "#888") for s in display_df['signal']]
+        colors = [
+            CHART_COLORS['positive'] if s == 'Overweight'
+            else CHART_COLORS['negative'] if s == 'Avoid'
+            else CHART_COLORS['neutral']
+            for s in display_df['signal']
+        ]
 
         fig = go.Figure()
         fig.add_trace(go.Bar(
@@ -436,21 +548,21 @@ with tab_ranking:
             hovertemplate='<b>%{y}</b><br>Score: %{x:.3f}<br>Signal: %{text}<extra></extra>',
         ))
         fig.update_layout(**_get_plotly_dark_layout(
-            title=dict(text="Composite Score by Sector", font=dict(size=16, color='#e0e0e0')),
+            title=dict(text="Composite Score by Sector", font=dict(size=14, color='#f0f2f5')),
             xaxis_title="Composite Score",
             yaxis=dict(autorange="reversed"),
             height=max(400, len(display_df) * 35),
-            xaxis=dict(gridcolor='rgba(255,255,255,0.05)', zerolinecolor='rgba(255,255,255,0.1)'),
+            xaxis=dict(gridcolor='rgba(255,255,255,0.04)', zerolinecolor='rgba(255,255,255,0.08)'),
         ))
         st.plotly_chart(fig, use_container_width=True)
 
     with col_table:
         def style_signal(val):
             if val == "Overweight":
-                return 'background: linear-gradient(135deg, #00c853, #00e676); color: #000; font-weight: 700; border-radius: 12px; text-align: center;'
+                return 'background: rgba(0,200,83,0.12); color: #00c853; font-weight: 600; border-radius: 100px; text-align: center; border-left: 3px solid #00c853;'
             elif val == "Avoid":
-                return 'background: linear-gradient(135deg, #ef5350, #ff1744); color: #fff; font-weight: 700; border-radius: 12px; text-align: center;'
-            return 'background: linear-gradient(135deg, #ff9800, #ffc107); color: #000; font-weight: 700; border-radius: 12px; text-align: center;'
+                return 'background: rgba(255,77,79,0.12); color: #ff4d4f; font-weight: 600; border-radius: 100px; text-align: center; border-left: 3px solid #ff4d4f;'
+            return 'background: rgba(255,152,0,0.10); color: #ff9800; font-weight: 600; border-radius: 100px; text-align: center; border-left: 3px solid #ff9800;'
 
         styled = table_df.style.format({
             'Score': '{:.3f}',
@@ -483,19 +595,20 @@ with tab_ranking:
                 'z_volatility': 'Volatility',
                 'z_liquidity': 'Liquidity',
                 'z_acceleration': 'Acceleration',
+                'z_concentration': 'Concentration',
             }
             z_data = {v: row.get(k, 0) for k, v in z_cols.items()}
             fig_z = go.Figure(go.Bar(
                 x=list(z_data.values()),
                 y=list(z_data.keys()),
                 orientation='h',
-                marker_color=['#00c853' if v > 0 else '#ef5350' for v in z_data.values()],
+                marker_color=[CHART_COLORS['positive'] if v > 0 else CHART_COLORS['negative'] for v in z_data.values()],
             ))
             fig_z.update_layout(**_get_plotly_dark_layout(
                 title="Z-Score Components",
                 height=200,
                 margin=dict(l=10, r=10, t=35, b=10),
-                font=dict(color='#ccc', size=11),
+                font=dict(color='#9aa3b2', size=11),
             ))
             st.plotly_chart(fig_z, use_container_width=True)
 
@@ -578,7 +691,7 @@ with tab_drilldown:
                         color_discrete_sequence=['#9b5de5'],
                         title=f"RSI Distribution — {selected_sector}",
                     )
-                    fig_rsi.add_vline(x=30, line_dash="dash", line_color="#ef5350", annotation_text="Oversold")
+                    fig_rsi.add_vline(x=30, line_dash="dash", line_color=CHART_COLORS['negative'], annotation_text="Oversold")
                     fig_rsi.add_vline(x=70, line_dash="dash", line_color="#00c853", annotation_text="Overbought")
                     fig_rsi.update_layout(**_get_plotly_dark_layout(height=300))
                     st.plotly_chart(fig_rsi, use_container_width=True)
@@ -638,17 +751,39 @@ with tab_backtest:
             if result.metrics:
                 m = result.metrics
 
-                # ── Metrics Cards ──
+                # ── Run bootstrap for CI display ──
+                _bt_ci = {}
+                try:
+                    _bt_bootstrap = bootstrap_test(
+                        result.portfolio_returns,
+                        result.benchmark_returns,
+                        n_samples=1000,
+                    )
+                    if _bt_bootstrap:
+                        _bt_ci = _bt_bootstrap
+                except Exception:
+                    pass
+
+                # ── Metrics Cards (with CI where available) ──
                 mc1, mc2, mc3, mc4, mc5 = st.columns(5)
                 alpha_val = m.get('alpha', 0)
+                _alpha_ci = ""
+                if 'alpha' in _bt_ci:
+                    _, p5, p95 = _bt_ci['alpha']
+                    _alpha_ci = f" [{p5:+.1f}, {p95:+.1f}]"
+                _sharpe_ci = ""
+                if 'sharpe' in _bt_ci:
+                    _, p5, p95 = _bt_ci['sharpe']
+                    _sharpe_ci = f" [{p5:.2f}, {p95:.2f}]"
                 cards = [
                     (mc1, "ANN. RETURN", f"{m.get('annualized_return', 0):.1f}%",
-                     f"α: {alpha_val:+.1f}% vs bench", "positive" if alpha_val > 0 else "negative"),
-                    (mc2, "SHARPE RATIO", f"{m.get('sharpe_ratio', 0):.2f}",
-                     f"Bench: {m.get('sharpe_ratio_bench', 0):.2f}", ""),
+                     f"Excess: {alpha_val:+.1f}%{_alpha_ci}", "positive" if alpha_val > 0 else "negative"),
+                    (mc2, "SHARPE (rf=0%)", f"{m.get('sharpe_ratio', 0):.2f}",
+                     f"Bench: {m.get('sharpe_ratio_bench', 0):.2f}{_sharpe_ci}", ""),
                     (mc3, "MAX DRAWDOWN", f"{m.get('max_drawdown', 0):.1f}%", "", ""),
-                    (mc4, "HIT RATE", f"{m.get('hit_rate', 0):.0f}%", "of months beat bench", ""),
-                    (mc5, "INFO RATIO", f"{m.get('information_ratio', 0):.3f}", "", ""),
+                    (mc4, "MONTHLY WIN RATE", f"{m.get('hit_rate', 0):.0f}%",
+                     f"{m.get('n_periods', 0)} months vs bench", ""),
+                    (mc5, "INFO RATIO (ann.)", f"{m.get('information_ratio', 0):.3f}", "", ""),
                 ]
                 for col, label, value, delta, dt in cards:
                     col.markdown(render_metric_card(label, value, delta, dt), unsafe_allow_html=True)
@@ -669,13 +804,13 @@ with tab_backtest:
                     x=result.cumulative_benchmark.index,
                     y=result.cumulative_benchmark.values,
                     name=f'Benchmark ({BENCHMARK_ETF})',
-                    line=dict(color='#888', width=1.5, dash='dot'),
+                    line=dict(color=CHART_COLORS['benchmark'], width=1.5, dash='dot'),
                 ))
                 fig_bt.update_layout(**_get_plotly_dark_layout(
                     title="Cumulative Returns: Strategy vs Benchmark",
                     yaxis_title="Growth of $1",
                     height=420,
-                    legend=dict(x=0.02, y=0.98, bgcolor='rgba(0,0,0,0.3)'),
+                    legend=dict(x=0.02, y=0.98, bgcolor='rgba(20,22,34,0.80)'),
                 ))
                 st.plotly_chart(fig_bt, use_container_width=True)
 
@@ -734,7 +869,9 @@ with tab_backtest:
 # ══════════════════════════════════════════════════════════════════
 with tab_scenario:
     st.markdown('<div class="section-header">🎯 What-If Scenario Analysis</div>', unsafe_allow_html=True)
-    st.caption("Simulate score changes by adjusting sector features")
+    st.caption("Simulate score changes by adjusting sector features. "
+               "This is a sensitivity test, not a forecast — it shows how scores "
+               "respond to hypothetical changes in inputs.")
 
     scenario_col1, scenario_col2 = st.columns([1, 2])
 
@@ -745,8 +882,8 @@ with tab_scenario:
 
         vol_shock = st.slider(
             "Volatility Shock (%)",
-            min_value=-50, max_value=200, value=0, step=10,
-            help="Increase volatility by this percentage"
+            min_value=-50, max_value=100, value=0, step=10,
+            help="Increase volatility by this percentage (capped at +100%)"
         )
         mom_shock = st.slider(
             "Momentum Shift (pp)",
@@ -804,7 +941,7 @@ with tab_scenario:
             y=compare_df.index,
             x=compare_df['Score Change'],
             orientation='h',
-            marker_color=['#00c853' if v > 0 else '#ef5350' for v in compare_df['Score Change']],
+            marker_color=[CHART_COLORS['positive'] if v > 0 else CHART_COLORS['negative'] for v in compare_df['Score Change']],
         ))
         fig_scenario.update_layout(**_get_plotly_dark_layout(
             title="Score Change Under Scenario",
@@ -856,21 +993,32 @@ with tab_export:
         memo = f"""# Market Intelligence — Sector Rotation Memo
 **Date:** {today}  |  **Preset:** {preset_name}
 
+> ⚠️ This memo contains quantitative signals only. It is not investment advice.
+> All portfolio decisions require human judgment, fundamental analysis, and
+> compliance with applicable investment guidelines.
+
 ---
 
-## Recommended Actions
+## Quantitative Signal Summary
 
-### ✅ OVERWEIGHT (Rotate Into)
+### ✅ OVERWEIGHT Signals
 """
         for sector in overweight_sectors.index:
             score = overweight_sectors.loc[sector, 'composite_score']
+            # Governance callout
+            _gov_note = ""
+            if abs(score) > 0.3:
+                _gov_note = " — 🟢 Meets min score threshold (|score|>0.3)"
+            breadth_val = overweight_sectors.loc[sector].get('breadth', 1.0)
+            if breadth_val < BREADTH_FILTER:
+                _gov_note += f" — ⚠️ Breadth {breadth_val:.0%} < {BREADTH_FILTER:.0%} floor"
             explanations = overweight_sectors.loc[sector].get('explanation', [])
-            memo += f"\n**{sector}** (Score: {score:.3f})\n"
+            memo += f"\n**{sector}** (Score: {score:.3f}{_gov_note})\n"
             if isinstance(explanations, list):
                 for e in explanations[:2]:
                     memo += f"  - {e}\n"
 
-        memo += "\n### ❌ AVOID (Reduce Exposure)\n"
+        memo += "\n### ❌ AVOID Signals (Reduce Exposure)\n"
         for sector in avoid_sectors.index:
             score = avoid_sectors.loc[sector, 'composite_score']
             explanations = avoid_sectors.loc[sector].get('explanation', [])
@@ -884,11 +1032,13 @@ with tab_export:
 
 ## Scoring Methodology
 - **Preset:** {preset_name}
-- **Features:** Momentum, Breadth, Volatility (inv.), Liquidity, Acceleration
-- **Thresholds:** Top 20% → Overweight, Bottom 20% → Avoid
+- **Features:** Momentum, Breadth, Volatility (inv.), Liquidity, Acceleration, Concentration (inv.)
+- **Signal Thresholds:** Top 20% → Overweight, Bottom 20% → Avoid
+- **Governance Filters:** Breadth > {BREADTH_FILTER:.0%} for OW, |score| > {MIN_SCORE_MAGNITUDE} for action
+- **Tilt Size:** ±10% per signal (max ±20% per rebalance)
 
-⚠️ *This is a quantitative signal and should be combined with fundamental analysis.
-Not financial advice.*
+⚠️ *Quantitative signal only. Must be combined with fundamental analysis.*
+*Not financial advice. See playbook.md for governance and approval requirements.*
 """
         st.text_area("Memo Preview", memo, height=400)
         st.download_button(
@@ -905,8 +1055,9 @@ Not financial advice.*
 # ══════════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center; color: rgba(255,255,255,0.3); font-size: 0.8rem;'>"
-    "Market Intelligence Dashboard • Data: TradingView Screener + Yahoo Finance • "
+    "<div style='text-align: center; color: rgba(240,242,245,0.25); font-size: 0.75rem; "
+    "font-family: Inter, sans-serif; padding: 0.5rem 0;'>"
+    "Market Intelligence Dashboard · Data: TradingView Screener + Yahoo Finance · "
     "⚠️ Quantitative signals only — not financial advice"
     "</div>",
     unsafe_allow_html=True,

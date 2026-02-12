@@ -214,8 +214,6 @@ def _build_run_metadata(
     }
 
 
-# ... (Keeping imports and helper functions unchanged) ...
-
 def run_backtest(
     etf_prices: pd.DataFrame,
     weights: Optional[Dict[str, float]] = None,
@@ -227,7 +225,7 @@ def run_backtest(
     etf_volume: Optional[pd.DataFrame] = None,
 ) -> BacktestResult:
     """
-    Run a sector-tilt backtest simulation. (Vectorized)
+    Run a sector-tilt backtest simulation.
 
     Strategy:
     - At each rebalance, score sectors from ETF price history
@@ -360,64 +358,42 @@ def run_backtest(
             prev_weights = target_weights
             continue
 
-        # ── Vectorized daily returns calculation ──
-        # Computes growth path for the whole period at once using matrix ops.
-        
-        rets_arr = period_rets.values  # (T, N)
-        if rets_arr.shape[0] == 0:
-            continue
-
-        # Cumulative growth starting from 1.0
-        cum_growth_arr = np.cumprod(1 + rets_arr, axis=0)
-        
-        # Shift growth to get Start-of-Day state (for weight calculation)
-        # Prepend 1.0 row for the first day
-        shift_growth = np.vstack([np.ones((1, n_sectors)), cum_growth_arr[:-1]])
-        
-        # Unnormalized weights: w0 * growth
-        w0_arr = target_weights.values  # (N,)
-        w_unnorm = w0_arr * shift_growth  # (T, N) via broadcasting
-        
-        # Normalize by row sums to get actual drift-adjusted weights
-        row_sums = w_unnorm.sum(axis=1, keepdims=True)
-        # Avoid division by zero
-        row_sums[row_sums == 0] = 1.0
-        w_norm = w_unnorm / row_sums
-        
-        # Portfolio returns: sum(w_{t-1} * r_t)
-        port_rets_arr = (w_norm * rets_arr).sum(axis=1)
-        
-        # Apply transaction cost to first day of rebalance period
-        if cost > 0:
-            # R_net = (1 + R_gross) * (1 - cost) - 1
-            port_rets_arr[0] = (1 + port_rets_arr[0]) * (1 - cost) - 1
-
-        # Calculate End-of-Period weights for next rebal turnover
-        # Proportional to initial weights * total period growth
-        w_end_unnorm = w0_arr * cum_growth_arr[-1]
-        w_end_sum = w_end_unnorm.sum()
-        if w_end_sum > 0:
-            w_end_norm = w_end_unnorm / w_end_sum
-        else:
-            w_end_norm = w0_arr # Fallback
-
-        # Benchmark returns
+        # ── Vectorized daily returns with weight drift ──
+        # Convert to numpy for fast inner loop (avoids pandas overhead)
+        rets_arr = period_rets.values                    # (n_days, n_sectors)
+        w = target_weights.values.copy().astype(float)   # (n_sectors,)
         days = period_rets.index
-        if bench_col is not None:
-            # Align benchmark to period days using reindexing/lookup
-            # Fast lookup since we have datetime index
-            # .reindex is efficient enough for blocks
-            b_vals = bench_col.reindex(days).fillna(0.0).values
-        else:
-            b_vals = np.zeros(len(days))
+        n_days = len(days)
+
+        port_rets = np.empty(n_days)
+        bench_rets = np.empty(n_days)
+
+        for d_idx in range(n_days):
+            day_ret = rets_arr[d_idx]             # numpy array
+            pr = np.dot(w, day_ret)               # scalar dot product
+            if d_idx == 0 and cost > 0:
+                pr = (1 + pr) * (1 - cost) - 1
+            port_rets[d_idx] = pr
+
+            # Benchmark
+            if bench_col is not None and days[d_idx] in bench_col.index:
+                bench_rets[d_idx] = bench_col.loc[days[d_idx]]
+            else:
+                bench_rets[d_idx] = 0.0
+
+            # Drift weights in numpy
+            w = w * (1 + day_ret)
+            ws = w.sum()
+            if ws > 0:
+                w = w / ws
 
         daily_records.extend(
-            zip(days, port_rets_arr.tolist(), b_vals.tolist())
+            zip(days, port_rets.tolist(), bench_rets.tolist())
         )
 
         weight_log.append({'date': date, 'turnover': turnover,
                            **target_weights.to_dict()})
-        prev_weights = pd.Series(w_end_norm, index=etf_cols)
+        prev_weights = pd.Series(w, index=etf_cols)  # carry drifted weights
 
     if not daily_records:
         return _empty_result()
@@ -554,8 +530,8 @@ def bootstrap_test(
     seed: Optional[int] = 42,
 ) -> Dict[str, Tuple[float, float, float]]:
     """
-    Bootstrap test for significance of alpha. (Vectorized)
-    Uses block bootstrap (21-day blocks) with NumPy broadcasting.
+    Bootstrap test for significance of alpha.
+    Uses block bootstrap (21-day blocks) to preserve autocorrelation.
 
     Returns dict with: (mean, 5th percentile, 95th percentile) for each metric.
     """
@@ -564,55 +540,38 @@ def bootstrap_test(
 
     if n < block_size * 2:
         return {}
+
+    # Guard: n - block_size must be > 0 for rng.integers to work
     if n <= block_size:
+        logger.warning("Not enough data for block bootstrap (n=%d, block=%d)", n, block_size)
         return {}
 
+    # Use modern numpy RNG for reproducibility
     rng = np.random.default_rng(seed)
 
-    # 1. Generate start indices for all blocks across all samples at once
-    # n_blocks needed per sample
+    alpha_samples = np.empty(n_samples)
+    sharpe_samples = np.empty(n_samples)
+
     n_blocks = n // block_size + 1
-    
-    # Random start points: (n_samples, n_blocks)
-    starts = rng.integers(0, n - block_size, size=(n_samples, n_blocks))
 
-    # 2. Create offsets mask: (block_size,)
-    offsets = np.arange(block_size)
+    for i in range(n_samples):
+        block_starts = rng.integers(0, n - block_size, size=n_blocks)
+        sample_indices = np.concatenate([
+            np.arange(s, min(s + block_size, n)) for s in block_starts
+        ])[:n]
 
-    # 3. Broadcast to create (n_samples, n_blocks, block_size) indices
-    # starts[..., None] -> (S, B, 1)
-    # offsets[None, None, :] -> (1, 1, K)
-    # indices -> (S, B, K)
-    indices = starts[..., None] + offsets[None, None, :]
+        sample_active = active_returns.iloc[sample_indices].values
+        sample_port = portfolio_returns.iloc[sample_indices].values
 
-    # 4. Flatten the last two dims to get a stream of indices: (S, N_generated)
-    indices = indices.reshape(n_samples, -1)
+        # Annualized alpha
+        alpha_samples[i] = sample_active.mean() * TRADING_DAYS_PER_YEAR
 
-    # 5. Truncate to exact length n
-    indices = indices[:, :n]
-
-    # 6. Fancy indexing to fetch return values
-    # active_rets_arr: (N,)
-    active_rets_arr = active_returns.values
-    port_rets_arr = portfolio_returns.values
-
-    # sample_active: (S, N)
-    sample_active = active_rets_arr[indices]
-    sample_port = port_rets_arr[indices]
-
-    # 7. Compute metrics across axis 1 (samples)
-    
-    # Alpha: Mean of active returns * 252
-    alpha_samples = sample_active.mean(axis=1) * TRADING_DAYS_PER_YEAR
-
-    # Sharpe: Mean / Std * sqrt(252)
-    port_means = sample_port.mean(axis=1)
-    port_stds = sample_port.std(axis=1)
-    # Avoid div by zero
-    port_stds[port_stds < 1e-10] = 1.0 # Will result in 0 sharpe if mean is 0, or just handle mask
-    
-    sharpe_samples = (port_means / port_stds) * np.sqrt(TRADING_DAYS_PER_YEAR)
-    sharpe_samples[port_stds < 1e-9] = 0.0
+        # Sharpe
+        port_std = sample_port.std()
+        sharpe_samples[i] = (
+            sample_port.mean() / port_std * np.sqrt(TRADING_DAYS_PER_YEAR)
+            if port_std > 1e-10 else 0.0
+        )
 
     return {
         'alpha': (
@@ -626,8 +585,6 @@ def bootstrap_test(
             round(np.percentile(sharpe_samples, 95) * 100, 2),
         ),
     }
-
-# ... (Keeping sensitivity_analysis unchanged) ...
 
 
 def sensitivity_analysis(

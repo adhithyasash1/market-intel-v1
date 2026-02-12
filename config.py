@@ -48,6 +48,10 @@ AVOID_PERCENTILE      = 0.20   # bottom 20% → "Avoid"
 N_OVERWEIGHT  = 2              # sectors to overweight in backtest
 N_UNDERWEIGHT = 2              # sectors to underweight in backtest
 
+# Governance filters (from playbook.md §3 Risk Limits)
+BREADTH_FILTER       = 0.60    # OW requires breadth > 60%
+MIN_SCORE_MAGNITUDE  = 0.3     # |score| < 0.3 → treat as Neutral
+
 # ──────────────────────────────────────────────
 # Sector ETF Mapping (GICS → SPDR ETFs)
 # Used for backtesting with real price history

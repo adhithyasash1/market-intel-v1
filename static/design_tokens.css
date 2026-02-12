@@ -1,0 +1,106 @@
+/*
+ * ═══════════════════════════════════════════════════════════════
+ * DESIGN TOKENS — Market Intelligence Dashboard
+ * Institutional-grade quant UI · Dark Warm · Inter + JetBrains Mono
+ * ═══════════════════════════════════════════════════════════════
+ */
+
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ── Color: Backgrounds ── */
+  --bg-base:        #0b0d14;
+  --bg-surface:     #10121a;
+  --bg-panel:       #141622;
+  --bg-elevated:    #1a1c2e;
+  --bg-hover:       #1e2036;
+  --bg-selection:   rgba(0, 187, 249, 0.08);
+
+  /* ── Color: Accent Gradient ── */
+  --gradient-primary:  linear-gradient(135deg, #00f5d4 0%, #00bbf9 50%, #9b5de5 100%);
+  --gradient-surface:  linear-gradient(145deg, #141622 0%, #10121a 100%);
+  --gradient-header:   linear-gradient(135deg, #0b0d14 0%, #141622 50%, #10121a 100%);
+
+  /* ── Color: Semantic ── */
+  --color-primary:     #00bbf9;
+  --color-primary-dim: rgba(0, 187, 249, 0.15);
+  --color-success:     #00c853;
+  --color-success-dim: rgba(0, 200, 83, 0.12);
+  --color-danger:      #ff4d4f;
+  --color-danger-dim:  rgba(255, 77, 79, 0.12);
+  --color-warn:        #ff9800;
+  --color-warn-dim:    rgba(255, 152, 0, 0.12);
+  --color-muted:       #6b7280;
+  --color-neutral:     #9aa3b2;
+
+  /* ── Color: Text ── */
+  --text-primary:      #f0f2f5;
+  --text-secondary:    rgba(240, 242, 245, 0.65);
+  --text-tertiary:     rgba(240, 242, 245, 0.40);
+  --text-inverse:      #0b0d14;
+
+  /* ── Color: Borders & Dividers ── */
+  --border-subtle:     rgba(255, 255, 255, 0.06);
+  --border-medium:     rgba(255, 255, 255, 0.10);
+  --border-accent:     rgba(0, 187, 249, 0.25);
+  --border-focus:      rgba(0, 245, 212, 0.50);
+
+  /* ── Typography ── */
+  --font-sans:         'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:         'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  --fs-headline:       1.625rem;   /* 26px */
+  --fs-title:          1.125rem;   /* 18px */
+  --fs-body:           0.875rem;   /* 14px */
+  --fs-caption:        0.75rem;    /* 12px */
+  --fs-micro:          0.6875rem;  /* 11px */
+  --fs-metric-value:   1.625rem;   /* 26px */
+  --fs-metric-label:   0.6875rem;  /* 11px */
+  --fs-metric-delta:   0.75rem;    /* 12px */
+
+  --fw-regular:        400;
+  --fw-medium:         500;
+  --fw-semibold:       600;
+  --fw-bold:           700;
+  --fw-heavy:          800;
+
+  --lh-tight:          1.2;
+  --lh-normal:         1.5;
+  --ls-wide:           0.08em;
+  --ls-tight:          -0.02em;
+
+  /* ── Spacing (8px grid) ── */
+  --space-1:           4px;
+  --space-2:           8px;
+  --space-3:           12px;
+  --space-4:           16px;
+  --space-5:           20px;
+  --space-6:           24px;
+  --space-8:           32px;
+  --space-10:          40px;
+
+  /* ── Radius ── */
+  --radius-sm:         8px;
+  --radius-md:         12px;
+  --radius-lg:         16px;
+  --radius-pill:       100px;
+
+  /* ── Elevation ── */
+  --shadow-sm:         0 2px 8px rgba(0, 0, 0, 0.20);
+  --shadow-md:         0 6px 16px rgba(0, 0, 0, 0.35);
+  --shadow-glow-primary: 0 0 16px rgba(0, 187, 249, 0.10);
+  --shadow-glow-success: 0 0 12px rgba(0, 200, 83, 0.10);
+  --shadow-glow-danger:  0 0 12px rgba(255, 77, 79, 0.10);
+
+  /* ── Transitions ── */
+  --ease-out:          cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast:     0.12s;
+  --duration-normal:   0.2s;
+
+  /* ── Chart tokens ── */
+  --chart-grid:        rgba(255, 255, 255, 0.04);
+  --chart-zero-line:   rgba(255, 255, 255, 0.08);
+  --chart-area-opacity: 0.08;
+  --chart-stroke-width: 2;
+}

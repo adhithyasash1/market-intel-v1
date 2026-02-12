@@ -8,9 +8,9 @@
 
 | Signal | Action | Max Position Δ |
 |--------|--------|----------------|
-| **Overweight** | Increase sector exposure vs benchmark | +15% per rebalance |
+| **Overweight** | Increase sector exposure vs benchmark | +10% per rebalance |
 | **Neutral** | Maintain benchmark weight | No action required |
-| **Avoid** | Reduce sector exposure below benchmark | −15% per rebalance |
+| **Avoid** | Reduce sector exposure below benchmark | −10% per rebalance |
 
 **Decision rule:** Only act on signals with composite score magnitude > 0.3 (z-score units). Marginal signals near thresholds should be treated as Neutral.
 
@@ -28,7 +28,7 @@
 
 ```
 Target_Weight(sector) = Benchmark_Weight + Tilt
-  where Tilt ∈ {−15%, 0%, +15%} based on signal
+  where Tilt ∈ {−10%, 0%, +10%} based on signal
   
 Re-normalize all weights to sum to 100%
 ```
@@ -90,7 +90,7 @@ Re-normalize all weights to sum to 100%
 When market stress indicators activate (e.g., VIX > 25, cross-sector correlation spike):
 
 1. **Switch to Risk-Aware preset** (higher volatility weight)
-2. **Halve tilt sizes** (±7.5% instead of ±15%)
+2. **Halve tilt sizes** (±5% instead of ±10%)
 3. **Increase breadth threshold** to > 70%
 4. **Review weekly** instead of monthly
 
