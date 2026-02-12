@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-intelligence"
+version = "1.0.0"
+description = "High-performance sector rotation dashboard & API"
+readme = "README.md"
+authors = [
+  { name = "Adhithya Sashikumar", email = "adhithya@example.com" },
+]
+requires-python = ">=3.10"
+dependencies = [
+    "tvscreener>=0.2.0",
+    "yfinance>=0.2.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pyarrow>=12.0.0",
+    "streamlit>=1.28.0",
+    "plotly>=5.15.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "orjson>=3.9.0",
+    "async-lru>=2.0.0",
+    "pydantic>=2.0.0",
+    "colorama>=0.4.6",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]

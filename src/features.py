@@ -1,42 +1,63 @@
 """
 Feature Engineering — Per-stock feature computation and sector aggregation.
-
-Computes momentum, breadth, volatility, liquidity, and technical features
-from screener snapshots, then aggregates to sector level.
 """
 
 import pandas as pd
 import numpy as np
+from typing import Dict, Any
 
 from config import MIN_SECTOR_STOCKS
 from src.utils import sigmoid_gate
-
 
 def _safe_column_diff(df: pd.DataFrame, col_a: str, col_b: str) -> pd.Series:
     """Compute df[col_a] - df[col_b], returning 0 if either column is missing."""
     if col_a in df.columns and col_b in df.columns:
         return df[col_a] - df[col_b]
-    return pd.Series(0.0, index=df.index)
+    return pd.Series(0.0, index=df.index, dtype='float32')
 
+def _vectorized_concentration(df: pd.DataFrame) -> pd.Series:
+    """
+    Compute sector concentration (top 3 share) using vectorized groupby operations.
+    Replaces slow .apply().
+    """
+    if 'market_cap' not in df.columns or 'sector' not in df.columns:
+        # Return default 0.5 keyed by sector
+        if 'sector' in df.columns:
+            return df.groupby('sector').size() * 0.0 + 0.5
+        return pd.Series(dtype='float32')
+
+    # Sort by sector + market_cap descending
+    sorted_df = df.sort_values(['sector', 'market_cap'], ascending=[True, False])
+    
+    # Group sum of market cap
+    sector_total_mc = sorted_df.groupby('sector')['market_cap'].transform('sum')
+    
+    # Identify top 3 per sector
+    # Since we sorted by market cap desc, the first 3 in each group are top 3
+    # We can use cumcount to identify ranks 0, 1, 2
+    ranks = sorted_df.groupby('sector').cumcount()
+    is_top3 = ranks < 3
+    
+    # Compute sum of top 3
+    # Use mask to zero out non-top-3 caps, then sum by sector
+    top3_caps = sorted_df['market_cap'].where(is_top3, 0.0)
+    sector_top3_mc = top3_caps.groupby(sorted_df['sector']).sum()
+    
+    # Get unique totals (groupby.first() or similar since transform repeated it)
+    sector_totals = sorted_df.groupby('sector')['market_cap'].sum()
+    
+    # Calculate ratio (handle div by zero)
+    concentration = sector_top3_mc / sector_totals.replace(0, 1.0)
+    
+    return concentration
 
 def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Enrich a screener snapshot DataFrame with derived per-stock features.
-
-    Input columns expected (from data_engine standardized names):
-        price, volume, market_cap, sector, industry, country,
-        perf_1w, perf_1m, perf_3m, perf_6m, perf_ytd, perf_1y,
-        rsi_14, macd_level, macd_signal, sma_50, sma_200,
-        atr_14, avg_vol_10d, avg_vol_30d, rel_volume,
-        volatility_d, volatility_w, volatility_m, recommendation
-
-    Returns the same DataFrame with additional feature columns.
     """
     out = df.copy()
-
-    # ── Momentum acceleration: short-term vs medium-term momentum ──
-    # Soft sigmoid gate prevents discontinuity where a tiny momentum change
-    # flips acceleration from 0 to full value (hard gate instability).
+    
+    # ── Momentum acceleration ──
     raw_accel = _safe_column_diff(out, 'perf_1m', 'perf_3m')
     if 'perf_1m' in out.columns:
         gate = sigmoid_gate(out['perf_1m'])
@@ -46,25 +67,22 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── MACD histogram ──
     out['macd_histogram'] = _safe_column_diff(out, 'macd_level', 'macd_signal')
-    if 'macd_level' not in out.columns or 'macd_signal' not in out.columns:
-        out['macd_histogram'] = np.nan
 
-    # ── SMA alignment: price vs moving averages ──
+    # ── SMA alignment ──
+    # Int8/bool is sufficient, saves memory
     if all(c in out.columns for c in ['price', 'sma_50', 'sma_200']):
         out['above_sma50'] = (out['price'] > out['sma_50']).astype(int)
         out['above_sma200'] = (out['price'] > out['sma_200']).astype(int)
         out['golden_cross'] = (out['sma_50'] > out['sma_200']).astype(int)
     else:
-        out['above_sma50'] = np.nan
-        out['above_sma200'] = np.nan
-        out['golden_cross'] = np.nan
+        out['above_sma50'] = 0
+        out['above_sma200'] = 0
+        out['golden_cross'] = 0
 
-    # ── Liquidity proxy: log avg daily traded value ──
-    # Log-transform tames the right-skew (ADTV ranges from $1M to $10B+)
-    # and makes z-scores more meaningful across the distribution.
+    # ── Liquidity proxy ──
     if 'avg_vol_30d' in out.columns and 'price' in out.columns:
         raw_adtv = out['avg_vol_30d'] * out['price']
-        out['adtv'] = np.log1p(raw_adtv.clip(lower=0))  # log(1+x), safe for 0
+        out['adtv'] = np.log1p(raw_adtv.clip(lower=0))
     elif 'volume' in out.columns and 'price' in out.columns:
         raw_adtv = out['volume'] * out['price']
         out['adtv'] = np.log1p(raw_adtv.clip(lower=0))
@@ -73,7 +91,6 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── RSI zone ──
     if 'rsi_14' in out.columns:
-        # Clip to [0, 100] so out-of-range values don't produce NaN bins
         rsi_clipped = out['rsi_14'].clip(0, 100)
         out['rsi_zone'] = pd.cut(
             rsi_clipped,
@@ -84,91 +101,66 @@ def compute_stock_features(df: pd.DataFrame) -> pd.DataFrame:
     else:
         out['rsi_zone'] = 'N/A'
 
-    # ── Positive momentum flag (for breadth) ──
+    # ── Breadth input ──
     if 'perf_1m' in out.columns:
         out['positive_1m'] = (out['perf_1m'] > 0).astype(int)
     else:
-        out['positive_1m'] = np.nan
+        out['positive_1m'] = 0
 
     return out
-
-
-def _sector_concentration(grp: pd.DataFrame) -> float:
-    """Compute share of market cap in the top-3 names of a sector group."""
-    if 'market_cap' not in grp.columns:
-        return 0.5
-    total = grp['market_cap'].sum()
-    if len(grp) < 3 or total == 0:
-        return 1.0
-    top3 = grp.nlargest(3, 'market_cap')['market_cap'].sum()
-    return top3 / total
-
 
 def compute_sector_aggregates(stock_df: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate per-stock features to sector level.
-
-    Returns a DataFrame indexed by sector with columns:
-        n_stocks, median_momentum, breadth, avg_volatility, concentration,
-        liquidity_score, avg_recommendation, momentum_acceleration,
-        median_rsi, pct_golden_cross, median_perf_3m, median_perf_ytd,
-        total_market_cap
+    Optimized to minimize slow operations.
     """
     if 'sector' not in stock_df.columns:
         raise ValueError("DataFrame must have a 'sector' column")
 
-    # Drop rows without sector
+    # Filter
     df = stock_df.dropna(subset=['sector']).copy()
     grouped = df.groupby('sector')
 
     agg = pd.DataFrame()
     agg['n_stocks'] = grouped.size()
 
-    # Helper to conditionally aggregate a column
-    def _agg_col(col: str, func: str, default):
-        if col in df.columns:
-            return getattr(grouped[col], func)()
-        return default
+    def _agg_median(col: str, default=0.0):
+        return grouped[col].median() if col in df.columns else default
 
-    # ── Core aggregates ──
-    agg['median_momentum'] = _agg_col('perf_1m', 'median', 0.0)
-    agg['breadth'] = _agg_col('positive_1m', 'mean', 0.5)
-    # ── Volatility: use % vol, normalize ATR by price for unit consistency ──
+    def _agg_mean(col: str, default=0.5):
+        return grouped[col].mean() if col in df.columns else default
+
+    # Aggregates
+    agg['median_momentum'] = _agg_median('perf_1m')
+    agg['breadth'] = _agg_mean('positive_1m')
+    
+    # Volatility
     if 'volatility_d' in df.columns:
         agg['avg_volatility'] = grouped['volatility_d'].median()
     elif 'atr_14' in df.columns and 'price' in df.columns:
-        # ATR is in price units; normalize to % to match volatility_d scale
-        # Safe: df is already a copy from dropna() above
         df['_atr_pct'] = df['atr_14'] / df['price'] * 100
         agg['avg_volatility'] = df.groupby('sector')['_atr_pct'].median()
     else:
-        agg['avg_volatility'] = np.nan  # NaN → z-score ignores, no bias
+        agg['avg_volatility'] = np.nan
 
-    agg['liquidity_score'] = _agg_col('adtv', 'median', np.nan)  # NaN, not 0.0
-    agg['avg_recommendation'] = _agg_col('recommendation', 'mean', np.nan)
-    agg['momentum_acceleration'] = _agg_col('momentum_accel', 'median', 0.0)
-    agg['median_rsi'] = _agg_col('rsi_14', 'median', 50.0)  # diagnostic only (not in FEATURE_MAP)
-    agg['pct_golden_cross'] = _agg_col('golden_cross', 'mean', 0.5)  # diagnostic only (not in FEATURE_MAP)
+    agg['liquidity_score'] = _agg_median('adtv', np.nan)
+    agg['avg_recommendation'] = _agg_mean('recommendation', np.nan)
+    agg['momentum_acceleration'] = _agg_median('momentum_accel')
+    
+    # Concentration (Vectorized)
+    agg['concentration'] = _vectorized_concentration(df)
 
-    # ── Concentration: top-3 market cap share ──
-    if 'market_cap' in df.columns:
-        agg['concentration'] = df.groupby('sector').apply(
-            _sector_concentration, include_groups=False
-        )
-    else:
-        agg['concentration'] = 0.5
-
-    # ── Longer-term performance ──
+    # Longer-term
     for col, name in [('perf_3m', 'median_perf_3m'), ('perf_ytd', 'median_perf_ytd'),
                       ('perf_1y', 'median_perf_1y')]:
         if col in df.columns:
             agg[name] = grouped[col].median()
-
-    # ── Total market cap ──
+            
+    # Total Market Cap
     if 'market_cap' in df.columns:
         agg['total_market_cap'] = grouped['market_cap'].sum()
 
-    # Filter out sectors with too few constituents
+    # Filter small sectors
     agg = agg[agg['n_stocks'] >= MIN_SECTOR_STOCKS].copy()
-
+    
     return agg.sort_values('median_momentum', ascending=False)

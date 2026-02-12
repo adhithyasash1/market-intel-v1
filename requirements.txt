@@ -11,6 +11,12 @@ pyarrow>=12.0.0
 # ─── Dashboard & Visualization ───
 streamlit>=1.28.0
 plotly>=5.15.0
+# API
+fastapi
+uvicorn[standard]
+orjson
+async-lru
+pydantic
 
 # ─── Development & Testing ───
 pytest>=7.0.0

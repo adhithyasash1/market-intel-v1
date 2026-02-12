@@ -26,7 +26,8 @@ from config import (
 from src.data_engine import load_or_fetch_snapshot, fetch_sector_etf_history  # noqa: E402
 from src.features import compute_stock_features, compute_sector_aggregates  # noqa: E402
 from src.scorer import score_pipeline  # noqa: E402
-from src.backtest import run_backtest, bootstrap_test, sensitivity_analysis  # noqa: E402
+from src.backtest import run_backtest # noqa: E402
+from src.formatting import format_pct, format_large_number, today_str
 
 logger = logging.getLogger(__name__)
 
