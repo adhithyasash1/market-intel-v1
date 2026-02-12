@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: market-daily-snapshot
+spec:
+  schedule: "0 6 * * *"  # 6:00 AM UTC
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: worker
+            image: ghcr.io/adhithyasash1/testing:main
+            imagePullPolicy: Always
+            # Hypothetical command to refresh snapshot cache
+            command: ["python", "-c", "from src.data_engine import load_or_fetch_snapshot; load_or_fetch_snapshot()"]
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "512Mi"
+              limits:
+                cpu: "1000m"
+                memory: "1Gi"
+          restartPolicy: OnFailure
+          imagePullSecrets:
+          - name: ghcr-secret

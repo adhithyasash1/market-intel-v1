@@ -1,0 +1,52 @@
+name: Performance Regression Check
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'perf/**'
+
+jobs:
+  perf-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run Benchmark Baseline
+      run: |
+        python perf/benchmark.py > current_perf.txt
+        cat current_perf.txt
+        
+    # In a real setup, we would download 'main' branch baseline artifact and compare.
+    # Here we just ensure it runs fast enough (simplistic check).
+    
+    - name: Assert Performance
+      run: |
+        # Check if Backtest loop is < 0.1s
+        TIME=$(grep "Benchmarking run_backtest" -A 1 current_perf.txt | tail -n 1 | awk '{print $2}' | sed 's/s//')
+        echo "Backtest Time: $TIME s"
+        if (( $(echo "$TIME > 0.1" | bc -l) )); then
+          echo "FAIL: Backtest too slow ($TIME > 0.1s)"
+          exit 1
+        fi
+        
+        # Check Bootstrap < 0.1s
+        BOOT_TIME=$(grep "Benchmarking bootstrap_test" -A 1 current_perf.txt | tail -n 1 | awk '{print $2}' | sed 's/s//')
+        echo "Bootstrap Time: $BOOT_TIME s"
+        if (( $(echo "$BOOT_TIME > 0.1" | bc -l) )); then
+          echo "FAIL: Bootstrap too slow ($BOOT_TIME > 0.1s)"
+          exit 1
+        fi
+        
+        echo "PERF CHECK PASSED"

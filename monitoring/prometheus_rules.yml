@@ -1,0 +1,30 @@
+groups:
+- name: market-dashboard-alerts
+  rules:
+  - alert: HighJobFailureRate
+    expr: rate(failed_jobs_total[10m]) > 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High failure rate in worker jobs"
+      description: "Worker jobs are failing at a rate of {{ $value }} per second."
+
+  - alert: StaleSnapshot
+    # Alert if last snapshot is older than 26 hours (daily job missed)
+    expr: time() - last_snapshot_timestamp_seconds > 26 * 3600
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Data snapshot is stale"
+      description: "Last snapshot was successfully fetched > 26 hours ago."
+
+  - alert: HighBacktestLatency
+    expr: histogram_quantile(0.95, rate(backtest_duration_seconds_bucket[1h])) > 60
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Backtest p95 latency is high (> 60s)"
+      description: "95th percentile of backtest duration is {{ $value }}s."

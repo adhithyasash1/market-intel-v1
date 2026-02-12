@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-dashboard-app
+  labels:
+    app: market-dashboard
+    component: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-dashboard
+      component: app
+  template:
+    metadata:
+      labels:
+        app: market-dashboard
+        component: app
+    spec:
+      containers:
+      - name: app
+        image: ghcr.io/adhithyasash1/testing:main
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8501
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 20
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        env:
+          - name: SENTRY_DSN
+            valueFrom:
+              secretKeyRef:
+                name: market-secrets
+                key: SENTRY_DSN
+                optional: true
+      imagePullSecrets:
+      - name: ghcr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-dashboard-svc
+spec:
+  selector:
+    app: market-dashboard
+    component: app
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8501
+  type: ClusterIP
