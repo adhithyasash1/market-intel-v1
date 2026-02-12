@@ -2,10 +2,30 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
 
 # Data caches (regenerated at runtime)
 data/etf_cache/
 data/snapshots/
+*.sqlite
+*.db
+
+# Generated reports & artifacts
+reports/sector_memo_*.md
+*.csv
+artifacts/
+
+# Testing & Perf
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+perf/current_perf.txt
 
 # IDE
 .vscode/
@@ -13,3 +33,6 @@ data/snapshots/
 
 # OS
 .DS_Store
+
+# Environment variables
+.env
